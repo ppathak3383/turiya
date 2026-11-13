@@ -5,3 +5,5 @@ var/
 keyring*.json
 ledger*.jsonl
 kartr_log*.jsonl
+keys/
+*.secret.asc

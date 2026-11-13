@@ -1,0 +1,6 @@
+index
++ supports | arch: x86_64
++ index Turiya
+  + pkg turiya_hello | info: Turiya hello - holds nothing but its log
+  + pkg kartr_gate | info: Turiya Kartr gate - irreversible actions need your approval
+-
