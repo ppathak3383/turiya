@@ -25,7 +25,7 @@ Turiya ("the fourth", the witness behind waking, dreaming and deep sleep) separa
 | Judge cost on a 16 GB laptop CPU | ~6–11 s per message |
 | Provenance ledger (Gate 1) | 10 / 10; Ed25519 and ECDSA P-256 (TPM / phone secure chip) |
 | Family key exchange by QR in person | 11 / 11: forwarded QR, screenshot, stranger's camera, AI-made image all refused |
-| Sculpt OS (Genode) in a VM, signature-checked | boots |
+| Turiya component installed on Sculpt OS 26.10 from Turiya's own signed depot | **runs** (`verify … good`, "Turiya: Sakshi is awake") |
 | The gate's rule as a Genode component (C++, own SHA-256/HMAC) | **8 / 8**: an approval fits only the exact payment it was given for |
 
 The key finding: the **same small model** obeys about two thirds of hidden instructions when it acts, but spots about 98% of them when it is asked only to judge, with no power to act. So the judge can warn, never allow.
