@@ -39,6 +39,8 @@ namespace Turiya {
 
 	inline bool is_held(Verdict v) { return v != Verdict::ALLOWED && v != Verdict::ALLOWED_APPROVED; }
 
+	/* kept as a loop: without a C library there is no strlen for the compiler to turn this into */
+	__attribute__((optimize("no-tree-loop-distribute-patterns")))
 	inline usize slen(char const *s) { usize n = 0; while (s && s[n]) n++; return n; }
 
 	inline bool streq(char const *a, char const *b)

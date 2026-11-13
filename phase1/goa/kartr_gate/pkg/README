@@ -1,1 +1,1 @@
-Turiya Kartr gate: holds irreversible actions unless they carry the owner's HMAC approval.
+Turiya Kartr gate (1d): reads the actions an agent proposes, holds irreversible ones unless they carry the owner's exact approval, blocks anything outside the mandate, reports verdicts.

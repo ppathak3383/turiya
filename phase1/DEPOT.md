@@ -29,5 +29,16 @@ If your Sculpt version doesn't accept a URL there, add the depot user by hand on
 
 Built with Goa and the Genode tool chain 25.05; see `BUILD.md`.
 
-## Known issue in the 2026-11-13 kartr_gate package
-The published kartr_gate (2026-11-13) has no mandate check (an unknown or misspelt type such as `Pay` is allowed) and accepts `|` inside fields, so one approval can fit a second action. It only logs its decisions, so nothing is executed either way. Both are fixed in `src/kartr_gate_1d.cc` + `kartr_rule.h` (see `phase1/runs/2026-11-13-1d/`); a new package will be published after review.
+## kartr_gate 2026-11-13b (current)
+The index now points to `turiya/pkg/kartr_gate/2026-11-13b`. The package runs a small init with two parts:
+- **kartr_gate:** reads the actions an agent proposes from an `actions` ROM. In this package that ROM is a test file with 12 actions (`turiya/raw/kartr_gate`).
+- **report_rom:** prints the gate's verdicts to the log.
+
+The owner's key and mandate are in the package's config. Expected log: `kartr_gate: 3 allowed, 9 held`.
+Checked on Genode's Linux base, and the same code on seL4 in QEMU and VirtualBox (`phase1/runs/2026-11-13-1d/`).
+
+The older package `2026-11-13` stays in the depot because it is signed and historical. It had two holes:
+- no mandate check, so an unknown type such as `Pay` was allowed;
+- `|` was accepted inside fields, so one approval could fit a second action.
+
+It only logged its decisions, so nothing was ever executed. Don't install it.
