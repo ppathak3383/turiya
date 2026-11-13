@@ -1,0 +1,122 @@
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+  Booting `Genode on seL4'
+
+
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xfb2d000 end=0xfdf63c0 size=0x2c93c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 31edf000 type 1
+Adding physical memory region 0x100000-0x31fdf000
+	Physical Memory Region from 31fdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3d000 size=0xc3d000 entry=0x200298
+ACPI: RSDT paddr=0x31fe230e
+ACPI: RSDT vaddr=0x31fe230e
+ACPI: FADT paddr=0x31fe2106
+ACPI: FADT vaddr=0x31fe2106
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x31fe21fa
+ACPI: MADT vaddr=0x31fe21fa
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x1ca4000 v_entry=0x2000018 v_start=0x2000000 v_end=0x3ca4000 p_start=0xfdf7000 p_end=0x11a9b000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3d000 size=0x1ca4000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..31fdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8002ae1000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x2175538 dump:
+ Block: [0000000000200000,0000000000240000) size=256K avail=256K max_avail=256K
+ => mem_size=262144 (0 MB) / mem_avail=262144 (0 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000003ca4000)
+ ipc buffer [0000000003ca4000,0000000003ca5000)
+ boot_info  [0000000003ca5000,0000000003ca6542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 128M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (1137 bytes)
+boot module 'turiya_hello' (10008 bytes)
+boot module 'kartr_gate' (43896 bytes)
+boot module 'ld.lib.so' (1023800 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'init' (438912 bytes)
+boot module 'init.hsd' (4125 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode sculpt-26.10
+475 MiB RAM and 523288 caps assigned to init
+[init -> turiya_hello] Turiya: Sakshi is awake. I hold no capabilities except this log.
+[init -> kartr_gate] [a1] allowed: summarise inbox
+[init -> kartr_gate] [a2] HELD: pay ramesh.kumar@ybl 15000 needs your approval
+[init -> kartr_gate] [a3] allowed with your approval: pay ramesh.kumar@ybl 15000
+[init -> kartr_gate] [a4] HELD: pay ramesh.kumar@ybl 50000 approval does not match this exact action
+[init -> kartr_gate] [a5] HELD: pay evil@ybl 15000 approval does not match this exact action
+[init -> kartr_gate] [a6] HELD: delete Turiya/phase0/runs 0 needs your approval
+[init -> kartr_gate] [a7] allowed: draft_reply sender
+[init -> kartr_gate] [a8] HELD: share_file Form16 0 approval does not match this exact action
+[init -> kartr_gate] kartr_gate: 3 allowed, 5 held
+
+Run script execution successful.
