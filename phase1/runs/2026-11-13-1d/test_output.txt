@@ -1,0 +1,26 @@
+PASS sha256(abc) known vector                      
+PASS summarise allowed                              allowed
+PASS draft_reply in mandate allowed                 allowed
+PASS pay without approval held                      held_needs_approval
+PASS pay with exact approval allowed                allowed_with_approval
+PASS same approval, Rs 50,000 held                  held_approval_mismatch
+PASS same approval, other payee held                held_approval_mismatch
+PASS delete without approval held                   held_needs_approval
+PASS share approval reused for pay held             held_approval_mismatch
+PASS forged approval held                           held_approval_mismatch
+PASS pay approval reused as transfer held           held_approval_mismatch
+PASS '|' moves field boundary: held                 held_bad_input
+PASS '|' in target held                             held_bad_input
+PASS 64-char target (would truncate) held           held_bad_input
+PASS caller-flagged truncation held                 held_bad_input
+PASS empty target on pay held                       held_bad_input
+PASS newline in target held                         held_bad_input
+PASS empty type held                                held_bad_input
+PASS 'Pay' (capital) blocked, not allowed           blocked_outside_mandate
+PASS 'pay ' (trailing space) blocked                blocked_outside_mandate
+PASS unknown type open_link blocked                 blocked_outside_mandate
+PASS '|' in draft_reply target held                 held_bad_input
+PASS no owner key: valid-looking approval held      held_needs_approval
+PASS uppercase-hex approval held                    held_needs_approval
+
+24/24 pass

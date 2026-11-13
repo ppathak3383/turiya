@@ -28,3 +28,6 @@ If your Sculpt version doesn't accept a URL there, add the depot user by hand on
 - **kartr_gate**: holds an irreversible action (pay, transfer, delete, send_as_user, publish, share_file) unless it carries the owner's HMAC-SHA256 approval over `type|target|amount`. Its test configuration uses a **test key**, not a secret.
 
 Built with Goa and the Genode tool chain 25.05; see `BUILD.md`.
+
+## Known issue in the 2026-11-13 kartr_gate package
+The published kartr_gate (2026-11-13) has no mandate check (an unknown or misspelt type such as `Pay` is allowed) and accepts `|` inside fields, so one approval can fit a second action. It only logs its decisions, so nothing is executed either way. Both are fixed in `src/kartr_gate_1d.cc` + `kartr_rule.h` (see `phase1/runs/2026-11-13-1d/`); a new package will be published after review.

@@ -1,0 +1,4 @@
+static char const *APPR_PAY = "194d6e5238a9e7166b8aed2bb6e089f3a82082b83da74994af1c458f2eb48905";
+static char const *APPR_SHARE = "45b43fe16a4cc3bcbd880e59f1eaece961ae9d0d5b7f6e6e888ece3461e0b0a4";
+static char const *APPR_SPLIT = "c43b575ea95381ef60125c4cf6c14b38a4da94a0bba53e63426b9f382b0f07f2";
+static char const *KEY_HEX = "7475726979612d746573742d6b65792d6e6f742d612d736563726574";
