@@ -28,6 +28,7 @@ Turiya ("the fourth", the witness behind waking, dreaming and deep sleep) separa
 | Turiya component installed on Sculpt OS 26.10 from Turiya's own signed depot | **runs** (`verify … good`, "Turiya: Sakshi is awake") |
 | The gate's rule as a Genode component (C++, own SHA-256/HMAC) | **8 / 8**: an approval fits only the exact payment it was given for |
 | Both components on the **seL4 13.0** microkernel (QEMU, x86_64) | **8 / 8**, same log (`phase2/`) |
+| Same image on seL4 in **VirtualBox on a 2020 AMD laptop** | **8 / 8** after two kernel FPU settings (`phase2/genode-patches/`) |
 
 The key finding: the **same small model** obeys about two thirds of hidden instructions when it acts, but spots about 98% of them when it is asked only to judge, with no power to act. So the judge can warn, never allow.
 
