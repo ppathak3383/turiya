@@ -1,0 +1,38 @@
+# NOTICE
+
+Turiya — Copyright (C) 2026 Pranay Pathak and contributors.
+Licensed under the GNU Affero General Public License, version 3 or (at your option) any later version.
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+## Repository layout for release
+
+| Path | What | Licence |
+|---|---|---|
+| `LICENSE` | Verbatim AGPL-3.0 text from https://www.gnu.org/licenses/agpl-3.0.txt (copy at publish time; do not retype) | — |
+| `NOTICE` | This file | — |
+| `README.md` | Public README | AGPL-3.0-or-later |
+| `phase0/`, `pramana/` | Turiya source; every `.py` starts with `# SPDX-License-Identifier: AGPL-3.0-or-later` | AGPL-3.0-or-later |
+| `phase0/tests/*.json` | Test messages (all invented; no real people, accounts or numbers) | AGPL-3.0-or-later |
+| `phase1/*.md` | Notes | AGPL-3.0-or-later |
+
+## Not included in the repository
+
+| Item | Why |
+|---|---|
+| `phase1/images/` (Sculpt OS image, signature, Genode key) | Third-party binary; link to genode.org instead |
+| `gemma-results/`, `phase0/runs/*/kartr_log.jsonl` | Run artefacts; publish summaries only |
+| Any keyring, ledger store or private key | Personal |
+| `WORKLOG.md` | Internal; replace with a public CHANGELOG |
+
+## Third-party software Turiya uses (not bundled)
+
+| Component | Use | Licence |
+|---|---|---|
+| Genode OS framework / Sculpt OS | Phase 1 base system | AGPL-3.0 (with Genode Labs' commercial option) |
+| seL4 microkernel | Phase 2 kernel | GPL-2.0 (kernel); BSD-2-Clause (user libraries) |
+| Python `cryptography` | Ed25519, ECDSA P-256 | Apache-2.0 OR BSD-3-Clause |
+| `qrcode` | Key-card QR images | BSD-3-Clause |
+| OpenCV (`opencv-python-headless`) | QR decoding in tests | Apache-2.0 |
+| Gemma 4 (local model) | Agent and judge in tests | Gemma terms of use (model weights not bundled) |
+
+All are compatible with distributing Turiya under AGPL-3.0-or-later as long as none is bundled with a conflicting licence. Check each licence again at publish time.
