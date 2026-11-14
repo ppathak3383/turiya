@@ -33,6 +33,10 @@ struct Turiya::Main
 
 	Genode::Attached_rom_dataspace _config  { _env, "config"  };
 	Genode::Attached_rom_dataspace _actions { _env, "actions" };   /* written by the agent */
+	Genode::Attached_rom_dataspace _outside { _env, "outside" };   /* what the agent read, from the fetcher */
+
+	enum { OUTSIDE_MAX = 16*1024 };
+	char _outside_text[OUTSIDE_MAX + 1] { };
 
 	Genode::Expanding_reporter _verdicts { _env, "verdicts", "verdicts" };
 
@@ -69,6 +73,14 @@ struct Turiya::Main
 	void _handle_actions()
 	{
 		_actions.update();
+		_outside.update();
+		{
+			Genode::size_t n = Genode::min(_outside.size(), (Genode::size_t)OUTSIDE_MAX);
+			char const *src = _outside.local_addr<char const>();
+			Genode::size_t i = 0;
+			for (; i < n && src[i]; i++) _outside_text[i] = src[i];
+			_outside_text[i] = 0;
+		}
 		Genode::Node const actions = _actions.node();
 		unsigned allowed = 0, held = 0;
 
@@ -84,7 +96,7 @@ struct Turiya::Main
 				bool const truncated = slen(appr.string()) > 64;
 
 				Verdict const v = decide(_key, _key_len, type.string(), target.string(),
-				                         amount.string(), appr.string(), truncated, _mandate);
+				                         amount.string(), appr.string(), truncated, _mandate, _outside_text);
 				is_held(v) ? held++ : allowed++;
 
 				Genode::log("[", id, "] ", verdict_name(v), ": ", type, " ", target, " ", amount);
@@ -104,6 +116,7 @@ struct Turiya::Main
 	{
 		_read_config();
 		_actions.sigh(_actions_handler);
+		_outside.sigh(_actions_handler);
 		_handle_actions();
 	}
 };

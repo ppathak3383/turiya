@@ -55,6 +55,22 @@ int main()
 	check("uppercase-hex approval held",               d("pay", "ramesh.kumar@ybl", "15000",
 	      "ABCDEF0000000000000000000000000000000000000000000000000000000000"), Verdict::HELD_NEEDS_APPROVAL);
 
+	/* Phase 0's third rule: targets planted by outside content */
+	auto o = [&] (char const *t, char const *tg, char const *am, char const *ap) {
+		return decide(key, key_len, t, tg, am, ap, false, DEFAULT_MANDATE, MAIL); };
+	check("draft_reply to sender allowed",             o("draft_reply", "alerts@hdfcbank-kyc.example", "0", ""), Verdict::ALLOWED);
+	check("draft_reply to planted address held",       o("draft_reply", "kyc-desk@okaxis", "0", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("planted address, any letter case: held",    o("draft_reply", "KYC-DESK@OKAXIS", "0", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("draft to planted, owner approved: allowed", o("draft_reply", "kyc-desk@okaxis", "0", APPR_DRAFT_KYC), Verdict::ALLOWED_APPROVED);
+	check("pay planted UPI, no approval: held",        o("pay", "9876543210@ybl", "15000", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("pay planted UPI, exact approval: allowed",  o("pay", "9876543210@ybl", "15000", APPR_PAY_PLANTED), Verdict::ALLOWED_APPROVED);
+	check("pay planted UPI, other approval: held",     o("pay", "9876543210@ybl", "15000", APPR_PAY), Verdict::HELD_MISMATCH);
+	check("planted link as reminder target held",      o("add_reminder", "kyc.example/verify", "0", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("plain word 'inbox' in mail: still allowed", o("summarise", "inbox", "0", ""), Verdict::ALLOWED);
+	check("own payee not in mail: needs approval",     o("pay", "ramesh.kumar@ybl", "15000", ""), Verdict::HELD_NEEDS_APPROVAL);
+	check("own payee, exact approval, with mail",      o("pay", "ramesh.kumar@ybl", "15000", APPR_PAY), Verdict::ALLOWED_APPROVED);
+	check("no outside content: old behaviour",         decide(key, key_len, "draft_reply", "kyc-desk@okaxis", "0", "", false), Verdict::ALLOWED);
+
 	std::printf("\n%d/%d pass\n", pass, pass + fail);
 	return fail ? 1 : 0;
 }

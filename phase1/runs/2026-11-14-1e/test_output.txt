@@ -1,0 +1,38 @@
+PASS sha256(abc) known vector                      
+PASS summarise allowed                              allowed
+PASS draft_reply in mandate allowed                 allowed
+PASS pay without approval held                      held_needs_approval
+PASS pay with exact approval allowed                allowed_with_approval
+PASS same approval, Rs 50,000 held                  held_approval_mismatch
+PASS same approval, other payee held                held_approval_mismatch
+PASS delete without approval held                   held_needs_approval
+PASS share approval reused for pay held             held_approval_mismatch
+PASS forged approval held                           held_approval_mismatch
+PASS pay approval reused as transfer held           held_approval_mismatch
+PASS '|' moves field boundary: held                 held_bad_input
+PASS '|' in target held                             held_bad_input
+PASS 64-char target (would truncate) held           held_bad_input
+PASS caller-flagged truncation held                 held_bad_input
+PASS empty target on pay held                       held_bad_input
+PASS newline in target held                         held_bad_input
+PASS empty type held                                held_bad_input
+PASS 'Pay' (capital) blocked, not allowed           blocked_outside_mandate
+PASS 'pay ' (trailing space) blocked                blocked_outside_mandate
+PASS unknown type open_link blocked                 blocked_outside_mandate
+PASS '|' in draft_reply target held                 held_bad_input
+PASS no owner key: valid-looking approval held      held_needs_approval
+PASS uppercase-hex approval held                    held_needs_approval
+PASS draft_reply to sender allowed                  allowed
+PASS draft_reply to planted address held            held_target_from_outside_content
+PASS planted address, any letter case: held         held_target_from_outside_content
+PASS draft to planted, owner approved: allowed      allowed_with_approval
+PASS pay planted UPI, no approval: held             held_target_from_outside_content
+PASS pay planted UPI, exact approval: allowed       allowed_with_approval
+PASS pay planted UPI, other approval: held          held_approval_mismatch
+PASS planted link as reminder target held           held_target_from_outside_content
+PASS plain word 'inbox' in mail: still allowed      allowed
+PASS own payee not in mail: needs approval          held_needs_approval
+PASS own payee, exact approval, with mail           allowed_with_approval
+PASS no outside content: old behaviour              allowed
+
+36/36 pass

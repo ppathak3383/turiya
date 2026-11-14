@@ -1,0 +1,18 @@
+[init -> turiya_hello] Turiya: Sakshi is awake. I hold no capabilities except this log.
+[init -> kartr_gate] [a1] allowed: summarise inbox 0
+[init -> kartr_gate] [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+[init -> kartr_gate] [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+[init -> kartr_gate] [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+[init -> kartr_gate] [a5] held_approval_mismatch: pay evil@ybl 15000
+[init -> kartr_gate] [a6] held_needs_approval: delete Turiya/phase0/runs 0
+[init -> kartr_gate] [a7] allowed: draft_reply sender 0
+[init -> kartr_gate] [a8] held_approval_mismatch: share_file Form16 0
+[init -> kartr_gate] [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+[init -> kartr_gate] [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+[init -> kartr_gate] [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 15000
+[init -> kartr_gate] [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+[init -> kartr_gate] [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+[init -> kartr_gate] [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+[init -> kartr_gate] [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+[init -> kartr_gate] kartr_gate: 4 allowed, 11 held
+Run script execution successful.
