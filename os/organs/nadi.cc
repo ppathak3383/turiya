@@ -186,6 +186,8 @@ static const char *class_word(uint8_t cls, uint8_t sub, uint8_t proto)
 	return "other";
 }
 
+#include "nadi_desc.h"                      /* the configuration descriptor walk: shared with its fuzzer */
+
 static uint8_t kbd_dci;
 
 /* ---- a USB stick: bulk-only transport, SCSI, READ-ONLY BY CONSTRUCTION ---- */
@@ -269,35 +271,17 @@ static uint32_t address_and_name(unsigned port, unsigned speed)
 	if (control(slot, 0x80, 6, 0x0200, 0, 9)) { memcpy(d.what, "no configuration", 17); W->ndev++; return 0; }
 	unsigned total = buf.va[2] | buf.va[3] << 8;
 	if (total > 1024) total = 1024;
-	if (control(slot, 0x80, 6, 0x0200, 0, (uint16_t)total)) { memcpy(d.what, "no configuration", 17); W->ndev++; return 0; }
 	uint8_t cfg = buf.va[5];
+	memset((void *)buf.va, 0, 1024);                               /* a short answer leaves zeros, never old bytes */
+	if (control(slot, 0x80, 6, 0x0200, 0, (uint16_t)total)) { memcpy(d.what, "no configuration", 17); W->ndev++; return 0; }
 
-	/* walk interfaces and endpoints; the first interface names the device; a boot keyboard is listened to */
-	int ifnum = -1, kbd_if = -1; uint8_t kbd_ep = 0, kbd_int = 10; uint16_t kbd_mps = 8;
-	bool named = false, in_kbd = false, in_msc = false;
-	uint8_t msc_in = 0, msc_out = 0; uint16_t msc_in_mps = 512, msc_out_mps = 512; uint8_t msc_burst_in = 0, msc_burst_out = 0, *last_burst = nullptr;
-	for (unsigned o = 0; o + 2 <= total; ) {
-		unsigned len = buf.va[o], type = buf.va[o + 1];
-		if (len < 2) break;
-		if (type == 4 && o + 9 <= total) {
-			ifnum = buf.va[o + 2];
-			uint8_t c3 = buf.va[o + 5], s3 = buf.va[o + 6], p3 = buf.va[o + 7];
-			in_kbd = c3 == 3 && s3 == 1 && p3 == 1;
-			in_msc = c3 == 8 && s3 == 6 && p3 == 0x50;              /* SCSI over bulk-only transport */
-			if (!named || in_kbd) { d.cls = c3; d.sub = s3; d.proto = p3; named = true; }
-			if (in_kbd && kbd_if < 0) kbd_if = ifnum;
-		}
-		if (type == 5 && o + 7 <= total && in_msc && (buf.va[o + 3] & 3) == 2) {
-			uint16_t m = (uint16_t)(buf.va[o + 4] | buf.va[o + 5] << 8);
-			if (buf.va[o + 2] & 0x80) { if (!msc_in) { msc_in = buf.va[o + 2] & 0x0f; msc_in_mps = m; last_burst = &msc_burst_in; } }
-			else if (!msc_out) { msc_out = buf.va[o + 2] & 0x0f; msc_out_mps = m; last_burst = &msc_burst_out; }
-		} else if (type == 0x30 && last_burst && o + 3 <= total) { *last_burst = buf.va[o + 2]; last_burst = nullptr; }
-		if (type == 5 && o + 7 <= total && in_kbd && !kbd_ep && (buf.va[o + 2] & 0x80) && (buf.va[o + 3] & 3) == 3) {
-			kbd_ep = buf.va[o + 2] & 0x0f; kbd_mps = (uint16_t)(buf.va[o + 4] | buf.va[o + 5] << 8); kbd_int = buf.va[o + 6];
-		}
-		o += len;
-	}
-	if (!named) d.cls = dcls;
+	/* walk interfaces and endpoints (nadi_desc.h); the first interface names the device; a boot keyboard is listened to */
+	DescWalk dw;
+	walk_config(buf.va, total, dw);
+	if (dw.named) { d.cls = dw.cls; d.sub = dw.sub; d.proto = dw.proto; } else d.cls = dcls;
+	int kbd_if = dw.kbd_if; uint8_t kbd_ep = dw.kbd_ep, kbd_int = dw.kbd_int; uint16_t kbd_mps = dw.kbd_mps;
+	uint8_t msc_in = dw.msc_in, msc_out = dw.msc_out, msc_burst_in = dw.msc_burst_in, msc_burst_out = dw.msc_burst_out;
+	uint16_t msc_in_mps = dw.msc_in_mps, msc_out_mps = dw.msc_out_mps;
 	const char *w = class_word(d.cls, d.sub, d.proto);
 	unsigned k = 0; while (w[k] && k < sizeof d.what - 1) { d.what[k] = w[k]; k++; } d.what[k] = 0;
 	W->ndev++;
@@ -313,6 +297,7 @@ static uint32_t address_and_name(unsigned port, unsigned speed)
 		unsigned interval = 3;
 		if (speed <= 2) { unsigned f = kbd_int ? kbd_int * 8u : 8u; interval = 0; while ((2u << interval) <= f && interval < 10) interval++; }
 		else if (kbd_int) interval = kbd_int - 1u;
+		if (interval > 15) interval = 15;                          /* the controller's largest; a device may claim more */
 		memset((void *)ictx.va, 0, 4096);
 		in_ctrl()[1] = 1u | 1u << kbd_dci;
 		in_slot()[0] = (uint32_t)kbd_dci << 27 | (uint32_t)speed << 20;

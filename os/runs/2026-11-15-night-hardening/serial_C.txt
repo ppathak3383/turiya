@@ -30,7 +30,7 @@ Nothing here can pay, send or delete: the gate only decides. Type 'help'.
 turiya> Turiya: ready
 check
   check (reads only; the internal SSD is not touched)
-  Turiya     heart 3 beats, breath 6; Tvak awake (by interrupt); judges agreed 15/15
+  Turiya     heart 2 beats, breath 5; Tvak awake (by interrupt); judges agreed 15/15
   processor  Intel Core Processor (Skylake), 999 MiB, 2048x2048
   PCI        8 functions: display 00:02.0 QEMU; USB3 00:03.0 QEMU;
               USB3 00:04.0 QEMU; NVMe 00:05.0 QEMU;

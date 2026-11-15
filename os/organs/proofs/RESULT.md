@@ -67,6 +67,7 @@ Files: `kosa_mutants_2026-11-15.txt`, `nadi_mutants_2026-11-15.txt`, `final_proo
 | 3 | Smrti | a crafted stick (looping FAT chain, 128 or 65536 sectors per cluster) made one `files` cost 33,026 block reads. Sakshi stopped at 2,000 and **showed the half listing as if complete** | Yes, with a crafted stick | Smrti's budget (1500 blocks per request, then code 24, said plainly). Sakshi never shows a half answer. |
 | 4 | Vibhaga (partition table) | GPT entry-array LBA from the disk was added without an overflow check; block 1 was read on a 1-block device | Harmless (the organs refuse), but untidy | Checked against the device's size first |
 | 5 | Nadi | a stick reporting a block size that is not a power of two (e.g. 1000) was accepted | Odd devices only | Refused (status 0x3000) |
+| 6 | Nadi | a device answering its configuration descriptor short left the rest of the buffer holding the previous device's bytes, which were then walked; a keyboard claiming an interval above 15 was passed to the controller | Odd or hostile devices | The buffer is zeroed first; the interval is clamped to 15 |
 
 ## Fuzzing (libFuzzer + AddressSanitizer + UndefinedBehaviorSanitizer)
 
@@ -74,8 +75,9 @@ Files: `kosa_mutants_2026-11-15.txt`, `nadi_mutants_2026-11-15.txt`, `final_proo
 |---|---|---|---|---|---|
 | Smrti (FAT32, exFAT; bare, MBR, GPT) | 38.4 M | 1231 s, 2 workers | 0 | 0 | each block in a fresh allocation of exactly its size; budget checked |
 | Vibhaga (MBR, GPT, 8 block sizes) | 7.2 M + 0.3 M | 630 s + 300 s | 0 after fix 4 | 0 | unread bytes poisoned |
+| Nadi's USB descriptor walk (`nadi_desc.h`) | 167.5 M | 601 s | 0 | 0 | exact-size allocation; endpoints only under the interfaces that claim them |
 
-Seeds are made by `smrti_seeds.py` and `../../sakshi/proofs/vibhaga_seeds.py`. `smrti_show.cc` prints what Smrti
+Seeds are made by `smrti_seeds.py` and `../../sakshi/proofs/vibhaga_seeds.py`; descriptor seeds (keyboard, stick, USB 3 stick, keyboard + mouse + stick, a phone sharing its connection) are in `desc_seeds/`. `smrti_show.cc` prints what Smrti
 makes of any input.
 
 ## What is not proved
