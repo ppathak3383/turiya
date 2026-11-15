@@ -19,7 +19,8 @@ namespace Turiya {
 	typedef unsigned long long u64;
 	typedef unsigned long      usize;
 
-	enum { FIELD_MAX = 63 };   /* longest type/target/amount accepted (Genode String<64>) */
+	enum { FIELD_MAX = 63 };
+	typedef char const *Cstr;  /* a list of names is 'Cstr const *' (also keeps CBMC's C++ parser on track) */   /* longest type/target/amount accepted (Genode String<64>) */
 
 	enum class Verdict { ALLOWED, ALLOWED_APPROVED, HELD_NEEDS_APPROVAL, HELD_MISMATCH, HELD_BAD_INPUT,
 	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET, HELD_DREAMING, HELD_ASLEEP };
@@ -33,7 +34,7 @@ namespace Turiya {
 	 * Turiya, the fourth, is not a mode: it is the witness, this gate and its log, present in all three.
 	 */
 	enum class Avastha { JAGRAT, SVAPNA, SUSUPTI };
-	static char const * const THINKING[] = { "summarise", nullptr };   /* types that leave no mark outside */
+	static Cstr const THINKING[] = { "summarise", nullptr };   /* types that leave no mark outside */
 
 	inline char const *verdict_name(Verdict v)
 	{
@@ -314,9 +315,9 @@ namespace Turiya {
 	}
 
 	/* the owner's mandate: reversible types this agent may use; a null-terminated list */
-	static char const * const DEFAULT_MANDATE[] = { "summarise", "draft_reply", "add_reminder", nullptr };
+	static Cstr const DEFAULT_MANDATE[] = { "summarise", "draft_reply", "add_reminder", nullptr };
 
-	inline bool in_mandate(char const * const *mandate, char const *t)
+	inline bool in_mandate(Cstr const *mandate, char const *t)
 	{
 		for (; mandate && *mandate; mandate++) if (streq(*mandate, t)) return true;
 		return false;
@@ -330,7 +331,7 @@ namespace Turiya {
 	inline Verdict decide(u8 const *key, usize key_len,
 	                      char const *type, char const *target, char const *amount,
 	                      char const *approval_hex, bool truncated,
-	                      char const * const *mandate = DEFAULT_MANDATE,
+	                      Cstr const *mandate = DEFAULT_MANDATE,
 	                      char const *outside = nullptr,
 	                      Avastha state = Avastha::JAGRAT)
 	{
@@ -340,7 +341,11 @@ namespace Turiya {
 		if (state == Avastha::SUSUPTI) return Verdict::HELD_ASLEEP;
 		if (state == Avastha::SVAPNA && !in_mandate(THINKING, type)) return Verdict::HELD_DREAMING;
 
+#ifdef TURIYA_PROOF
+		bool const planted = turiya_proof_planted(target, outside);   /* any detector: proved for all answers */
+#else
 		bool const planted = target_from_outside(target, outside);
+#endif
 
 		if (!irreversible(type)) {
 			if (!in_mandate(mandate, type)) return Verdict::BLOCKED_OUTSIDE_MANDATE;
@@ -363,7 +368,11 @@ namespace Turiya {
 		for (char const *p = amount; *p; p++) msg[m++] = *p;
 
 		u8 expect[32];
+#ifdef TURIYA_PROOF
+		turiya_proof_mac(msg, m, expect);       /* in the proof the MAC is an unknown function of the message */
+#else
 		hmac(key, key_len, msg, m, expect);
+#endif
 		u8 diff = 0;                                  /* constant-time compare */
 		for (unsigned i = 0; i < 32; i++) diff |= (u8)(expect[i] ^ given[i]);
 		return diff ? Verdict::HELD_MISMATCH : Verdict::ALLOWED_APPROVED;
