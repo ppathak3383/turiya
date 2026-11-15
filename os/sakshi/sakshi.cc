@@ -297,6 +297,10 @@ static const char *OUTSIDE =
 static Turiya::u8 key[64];
 static Turiya::usize klen;
 
+/* step 5d: the targets the owner knows. A stand-in for the owner's own config page (to be read from the seed
+ * the owner writes, step 5e); an empty list would hold every named target (default-deny). */
+static Turiya::Cstr const OWNER_KNOWN[] = { "inbox", "sender", "papa", "ramesh.kumar@ybl", nullptr };
+
 /* ---- two judges: the C++ rule (CBMC-checked) and the Verus-proved decision (Rust) must agree ---- */
 extern "C" uint32_t turiya_proved_decide(uint32_t flags, uint32_t state, const uint8_t *given, const uint8_t *expect);
 static unsigned long judges_agree, judges_differ;
@@ -305,7 +309,7 @@ static Turiya::Verdict judge(const char *type, const char *target, const char *a
                              bool trunc, const char *outside, Turiya::Avastha state)
 {
 	using namespace Turiya;
-	Verdict c = decide(key, klen, type, target, amount, appr, trunc, DEFAULT_MANDATE, outside, state);
+	Verdict c = decide(key, klen, type, target, amount, appr, trunc, DEFAULT_MANDATE, outside, state, OWNER_KNOWN);
 	u8 given[32] = { 0 }, expect[32] = { 0 };
 	bool hex_ok = unhex(appr, given, 32) == 32;
 	usize lt = Turiya::slen(type), lg = Turiya::slen(target), la = Turiya::slen(amount);
@@ -322,7 +326,8 @@ static Turiya::Verdict judge(const char *type, const char *target, const char *a
 	           | (uint32_t)field_ok(target, true) << 1 | (uint32_t)(target[0] != 0) << 2
 	           | (uint32_t)irreversible(type) << 3 | (uint32_t)in_mandate(DEFAULT_MANDATE, type) << 4
 	           | (uint32_t)in_mandate(THINKING, type) << 5 | (uint32_t)target_from_outside(target, outside) << 6
-	           | (uint32_t)(klen != 0) << 7 | (uint32_t)hex_ok << 8;
+	           | (uint32_t)(klen != 0) << 7 | (uint32_t)hex_ok << 8
+	           | (uint32_t)target_not_known(OWNER_KNOWN, target, outside) << 9;
 	Verdict r = (Verdict)turiya_proved_decide(f, (uint32_t)state, given, expect);
 	if (r == c) { judges_agree++; return c; }
 	judges_differ++;
@@ -549,6 +554,9 @@ static void explain(Turiya::Verdict v, const char *type)
 		out("  deep sleep: nothing acts. Type 'state jagrat' to wake.\n"); break;
 	case Turiya::Verdict::HELD_OUTSIDE_TARGET:
 		out("  the target came from outside content: it needs you.\n"); break;
+	case Turiya::Verdict::HELD_UNKNOWN_TARGET:
+		out("  the target is not one you know, nor the sender: it needs you.\n"
+		    "  Type 'approve' to approve exactly this.\n"); break;
 	}
 	colour = FG;
 }

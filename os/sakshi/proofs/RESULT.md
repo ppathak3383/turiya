@@ -34,3 +34,16 @@ Run: `cbmc gate_proof.cc -I.. --unwind 70 --unwinding-assertions --bounds-check 
 (CBMC 5.95.1); fuzz: `clang++ -std=c++20 -fsanitize=fuzzer,address,undefined -I.. detector_fuzz.cc`.
 
 Next: the same rule in Rust, with Verus proofs over all inputs (not just bounded sizes).
+
+## Step 5d (16 Nov 2026): the owner's known targets
+
+`decide()` takes the owner's list of known targets. The known-target check is left open like the detector
+(an unknown predicate), and two properties change or are added:
+
+| Property | Result |
+|---|---|
+| P5 allowed without approval only if reversible, in the mandate, not planted **and known** | proved |
+| P7 an act on a target the owner does not know is allowed only with the exact approval | proved |
+
+All of P1-P7 hold: **669 checks, 0 failed, 4.1 s** (CBMC 5.95.1). A broken copy that ignores the list
+(`if (!planted) return ALLOWED`) fails P5 and P7.

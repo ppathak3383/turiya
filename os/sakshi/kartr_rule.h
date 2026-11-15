@@ -9,6 +9,15 @@
  * action: a field containing '|', an over-long (truncated) field, or an empty target.
  * Any other type runs only if the owner's mandate lists it exactly (as in Phase 0); an unknown
  * type, or a near-miss such as "Pay", is blocked, never treated as harmless.
+ *
+ * Step 5d: the owner's known targets ('known', from the owner's config, never the agent). When a list is
+ * given, a reversible act may name no target, a listed target (byte for byte) or the whole address on the
+ * fetched message's "From:" line (any case). Anything else (a stranger, "papa ", "Papa", a Cyrillic
+ * "рара", "papa,kyc-desk@okaxis") is held as held_target_not_known until the owner's exact approval.
+ * Folding (step 1f) is only ever used to HOLD a target (planted check), never to allow one: a target that
+ * folds to a known name but differs in its bytes may resolve to someone else, so it is unknown.
+ * A known target that also appears in the fetched body is still planted (held_target_from_outside_content).
+ * No list (nullptr) keeps the old behaviour; Sakshi always passes one (default-deny when it is empty).
  */
 #ifndef _TURIYA__KARTR_RULE_H_
 #define _TURIYA__KARTR_RULE_H_
@@ -23,7 +32,8 @@ namespace Turiya {
 	typedef char const *Cstr;  /* a list of names is 'Cstr const *' (also keeps CBMC's C++ parser on track) */   /* longest type/target/amount accepted (Genode String<64>) */
 
 	enum class Verdict { ALLOWED, ALLOWED_APPROVED, HELD_NEEDS_APPROVAL, HELD_MISMATCH, HELD_BAD_INPUT,
-	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET, HELD_DREAMING, HELD_ASLEEP };
+	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET, HELD_DREAMING, HELD_ASLEEP,
+	                     HELD_UNKNOWN_TARGET };   /* appended last: the Rust copy returns the same numbers */
 
 	/*
 	 * Step 1g: the four states (avastha). Whether the owner is present decides what may act at all.
@@ -48,6 +58,7 @@ namespace Turiya {
 		case Verdict::HELD_OUTSIDE_TARGET: return "held_target_from_outside_content";
 		case Verdict::HELD_DREAMING:       return "held_while_dreaming";
 		case Verdict::HELD_ASLEEP:         return "held_while_asleep";
+		case Verdict::HELD_UNKNOWN_TARGET: return "held_target_not_known";
 		}
 		return "held_bad_input";
 	}
@@ -323,6 +334,27 @@ namespace Turiya {
 		return false;
 	}
 
+	/* the whole address on the fetched message's source line ("From: x"), compared case-insensitively */
+	inline bool is_sender(char const *target, char const *outside)
+	{
+		if (!outside || !*target) return false;
+		char const *p = outside;
+		static char const pre[] = "from:";
+		for (unsigned i = 0; pre[i]; i++, p++) if (lower(*p) != pre[i]) return false;
+		while (*p == ' ' || *p == '\t') p++;
+		usize i = 0;
+		for (; target[i]; i++) if (lower(p[i]) != lower(target[i])) return false;
+		while (p[i] == ' ' || p[i] == '\t' || p[i] == '\r') i++;
+		return p[i] == '\n' || p[i] == 0;
+	}
+
+	/* step 5d: a non-empty target that is neither in the owner's list (exactly) nor the sender */
+	inline bool target_not_known(Cstr const *known, char const *target, char const *outside)
+	{
+		if (!known || !*target) return false;            /* no list: old behaviour; no target: nothing to know */
+		return !in_mandate(known, target) && !is_sender(target, outside);
+	}
+
 	/*
 	 * Decide one action. 'type', 'target', 'amount' and 'approval_hex' come from the agent's ROM;
 	 * 'key' only from the owner's config. 'truncated' is set by the caller when the ROM attribute
@@ -333,7 +365,8 @@ namespace Turiya {
 	                      char const *approval_hex, bool truncated,
 	                      Cstr const *mandate = DEFAULT_MANDATE,
 	                      char const *outside = nullptr,
-	                      Avastha state = Avastha::JAGRAT)
+	                      Avastha state = Avastha::JAGRAT,
+	                      Cstr const *known = nullptr)
 	{
 		if (truncated || !field_ok(type, false) || !field_ok(amount, false))
 			return Verdict::HELD_BAD_INPUT;
@@ -346,18 +379,24 @@ namespace Turiya {
 #else
 		bool const planted = target_from_outside(target, outside);
 #endif
+#ifdef TURIYA_PROOF
+		bool const unknown = turiya_proof_unknown(target, known, outside);  /* any answer: proved for all */
+#else
+		bool const unknown = target_not_known(known, target, outside);
+#endif
 
 		if (!irreversible(type)) {
 			if (!in_mandate(mandate, type)) return Verdict::BLOCKED_OUTSIDE_MANDATE;
 			if (!field_ok(target, true)) return Verdict::HELD_BAD_INPUT;
-			if (!planted) return Verdict::ALLOWED;
-			/* a reversible act on a planted target also needs the owner's exact approval */
+			if (!planted && !unknown) return Verdict::ALLOWED;
+			/* a reversible act on a planted or unknown target also needs the owner's exact approval */
 		} else if (!field_ok(target, false))
 			return Verdict::HELD_BAD_INPUT;
 
 		u8 given[32] { };
 		if (!key_len || unhex(approval_hex, given, 32) != 32)
-			return planted ? Verdict::HELD_OUTSIDE_TARGET : Verdict::HELD_NEEDS_APPROVAL;
+			return planted ? Verdict::HELD_OUTSIDE_TARGET
+			     : (unknown && !irreversible(type)) ? Verdict::HELD_UNKNOWN_TARGET : Verdict::HELD_NEEDS_APPROVAL;
 
 		char msg[3 * FIELD_MAX + 3];
 		usize m = 0;

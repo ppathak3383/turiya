@@ -37,3 +37,15 @@ How the pieces fit:
 Next: Sakshi calls this Rust decision directly (no_std), so the code on seL4 is the proved code.
 
 Run: `verus gate.rs`; differential: `g++ -std=c++20 -I. facts_cli.cc -o facts_cli && verus gate_diff.rs --compile && ./facts_cli | ./gate_diff`.
+
+## Step 5d (16 Nov 2026): the owner's known targets
+
+`Facts` has a new fact `unknown_target` (a target neither in the owner's list, byte for byte, nor the sender's
+whole address) and a new verdict `HeldUnknownTarget` (last, so the numbers still match the C++ enum). New
+postcondition **P7**: an act on an unknown target is allowed only with the exact approval; P5 now also needs
+`!unknown_target`. Sakshi passes the fact as flag bit 9.
+
+**Not yet re-checked by Verus**: the 16 Nov night run could not download Verus (GitHub releases blocked in
+that session). The differential run was done on the executable code (`strip_verus.py`, plain rustc 1.97):
+`facts_cli` now also enumerates 3 known lists (none, empty, one name) and a mail whose sender is the target:
+**5,832 the same, 0 differ**; `lib.rs` builds as a no_std staticlib. Run `verus gate.rs` to close this.

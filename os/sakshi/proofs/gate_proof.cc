@@ -13,7 +13,8 @@
  *   P2  an act on a target planted by outside content is allowed only with the exact approval
  *   P3  deep sleep allows nothing; dreaming allows only thinking (summarise)
  *   P4  truncated input is always held as bad input
- *   P5  allowed WITHOUT approval only if reversible, in the mandate and not planted
+ *   P5  allowed WITHOUT approval only if reversible, in the mandate, not planted and not unknown
+ *   P7  an act on a target the owner does not know is allowed only with the exact approval (step 5d)
  *   P6  no out-of-bounds access, no null dereference (CBMC's own checks), and the unwinding is complete
  *
  * Run (from this folder): cbmc gate_proof.cc -I.. --unwind 70 --unwinding-assertions --bounds-check --pointer-check
@@ -23,6 +24,8 @@
 namespace Turiya {
 	void turiya_proof_mac(char const *msg, unsigned long n, unsigned char *out);
 	bool turiya_proof_planted(char const *target, char const *outside);
+	typedef char const *Cstr;
+	bool turiya_proof_unknown(char const *target, Cstr const *known, char const *outside);
 }
 #include "kartr_rule.h"
 using namespace Turiya;
@@ -31,6 +34,8 @@ unsigned char proof_expect[32];        /* the (unknown) MAC of whatever message 
 bool proof_planted;                    /* the (unknown) answer of the outside-content detector */
 void Turiya::turiya_proof_mac(char const *, unsigned long, unsigned char *out) { for (int i = 0; i < 32; i++) out[i] = proof_expect[i]; }
 bool Turiya::turiya_proof_planted(char const *, char const *) { return proof_planted; }
+bool proof_unknown;                    /* the (unknown) answer of the known-target check (step 5d) */
+bool Turiya::turiya_proof_unknown(char const *, Turiya::Cstr const *, char const *) { return proof_unknown; }
 
 char nondet_char();
 bool nondet_bool();
@@ -47,6 +52,7 @@ int main()
 {
 	for (int i = 0; i < 32; i++) proof_expect[i] = nondet_uchar();
 	proof_planted = nondet_bool();
+	proof_unknown = nondet_bool();
 
 	char type[13], target[9], amount[5], approval[66];
 	any_string(type, sizeof type); any_string(target, sizeof target); any_string(amount, sizeof amount);
@@ -58,7 +64,7 @@ int main()
 	u8 key[4] = { 1, 2, 3, 4 };
 	usize key_len = nondet_bool() ? 4 : 0;
 
-	Verdict v = decide(key, key_len, type, target, amount, approval, truncated, DEFAULT_MANDATE, "outside", state);
+	Verdict v = decide(key, key_len, type, target, amount, approval, truncated, DEFAULT_MANDATE, "outside", state, DEFAULT_MANDATE);
 	bool allowed = v == Verdict::ALLOWED || v == Verdict::ALLOWED_APPROVED;
 
 	u8 given[32];
@@ -73,7 +79,9 @@ int main()
 	__CPROVER_assert(!(state == Avastha::SUSUPTI && allowed), "P3a deep sleep allows nothing");
 	__CPROVER_assert(!(state == Avastha::SVAPNA && allowed) || in_mandate(THINKING, type), "P3b dreaming allows only thinking");
 	__CPROVER_assert(!truncated || v == Verdict::HELD_BAD_INPUT, "P4 truncated input is held as bad input");
-	__CPROVER_assert(v != Verdict::ALLOWED || (!irreversible(type) && in_mandate(DEFAULT_MANDATE, type) && !proof_planted),
-	                 "P5 allowed without approval only for a reversible, in-mandate, unplanted act");
+	__CPROVER_assert(v != Verdict::ALLOWED || (!irreversible(type) && in_mandate(DEFAULT_MANDATE, type) && !proof_planted
+	                 && !proof_unknown), "P5 allowed without approval only for a reversible, in-mandate, unplanted, known act");
+	__CPROVER_assert(!(proof_unknown && allowed) || (v == Verdict::ALLOWED_APPROVED && exact),
+	                 "P7 a target the owner does not know is allowed only with the exact approval");
 	return 0;
 }

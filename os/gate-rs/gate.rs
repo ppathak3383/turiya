@@ -10,7 +10,8 @@
 //   P2  an act on a planted target is allowed only with the exact approval
 //   P3  deep sleep allows nothing; dreaming allows only thinking
 //   P4  malformed or truncated input is held as bad input
-//   P5  allowed without approval only if reversible, in the mandate, well formed and not planted
+//   P5  allowed without approval only if reversible, in the mandate, well formed, not planted and known
+//   P7  an act on a target the owner does not know is allowed only with the exact approval (step 5d)
 // and that the 32-byte compare is exact (ct_eq) and runs in constant time (no early exit).
 use vstd::prelude::*;
 
@@ -27,6 +28,7 @@ pub enum Verdict {
     HeldOutsideTarget,
     HeldDreaming,
     HeldAsleep,
+    HeldUnknownTarget,      // step 5d; last, so the numbers match the C++ enum
 }
 
 #[derive(PartialEq, Eq, Structural)]
@@ -42,6 +44,7 @@ pub struct Facts {
     pub planted: bool,            // the target came from outside content
     pub has_key: bool,            // an approval key is configured
     pub approval_hex_ok: bool,    // the approval is exactly 64 hex characters
+    pub unknown_target: bool,     // step 5d: a target neither in the owner's list nor the sender
 }
 
 pub open spec fn allowed(v: Verdict) -> bool {
@@ -83,7 +86,8 @@ pub fn decide(f: &Facts, st: &Avastha, given: &[u8; 32], expect: &[u8; 32]) -> (
         (f.irreversible && allowed(v)) ==> (v == Verdict::AllowedApproved && exact(*f, given@, expect@)),  // P1
         v == Verdict::AllowedApproved ==> exact(*f, given@, expect@),                          // P1b
         (f.planted && allowed(v)) ==> (v == Verdict::AllowedApproved && exact(*f, given@, expect@)),       // P2
-        v == Verdict::Allowed ==> (!f.irreversible && f.in_mandate && f.target_ok && !f.planted),          // P5
+        (f.unknown_target && allowed(v)) ==> (v == Verdict::AllowedApproved && exact(*f, given@, expect@)), // P7
+        v == Verdict::Allowed ==> (!f.irreversible && f.in_mandate && f.target_ok && !f.planted && !f.unknown_target), // P5
 {
     if !f.input_ok {
         return Verdict::HeldBadInput;
@@ -101,15 +105,17 @@ pub fn decide(f: &Facts, st: &Avastha, given: &[u8; 32], expect: &[u8; 32]) -> (
         if !f.target_ok {
             return Verdict::HeldBadInput;
         }
-        if !f.planted {
+        if !f.planted && !f.unknown_target {
             return Verdict::Allowed;
         }
-        // a reversible act on a planted target also needs the owner's exact approval
+        // a reversible act on a planted or unknown target also needs the owner's exact approval
     } else if !(f.target_ok && f.target_present) {
         return Verdict::HeldBadInput;
     }
     if !f.has_key || !f.approval_hex_ok {
-        return if f.planted { Verdict::HeldOutsideTarget } else { Verdict::HeldNeedsApproval };
+        return if f.planted { Verdict::HeldOutsideTarget }
+               else if f.unknown_target && !f.irreversible { Verdict::HeldUnknownTarget }
+               else { Verdict::HeldNeedsApproval };
     }
     if ct_eq(expect, given) {
         Verdict::AllowedApproved
