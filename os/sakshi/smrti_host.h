@@ -25,7 +25,7 @@ static bool make_smrti(int k)
 	return true;
 }
 
-static void do_files(void)
+static void do_files(const char *path, unsigned mode)
 {
 	if (!wake_nadis()) return;
 	stick_k = -1;
@@ -43,6 +43,8 @@ static void do_files(void)
 	if (!smrti.awake) { colour = DIM; out("  Smrti is not awake.\n"); colour = FG; return; }
 	NadiWindow *w = nwins[stick_k];
 	swin->blocks = w->storage_blocks; swin->block_size = w->storage_block_size; swin->req_seq = ++files_seq;
+	swin->mode = mode;
+	{ unsigned n = 0; while (path[n] && n < sizeof swin->path - 1) { swin->path[n] = path[n]; n++; } swin->path[n] = 0; }
 	seL4_Signal(smrti.req);
 	for (unsigned served = 0; served < 2000; served++) {
 		seL4_Word a = 0, b = 0;
@@ -53,10 +55,30 @@ static void do_files(void)
 		seL4_Signal(smrti.give);
 	}
 	if (swin->status) {
-		colour = RED; out("  no FAT32 file system was found (code "); out_dec(swin->status); out(")\n"); colour = FG; return;
+		colour = RED;
+		switch (swin->status) {
+		case 20: out("  a name in the path is a file, not a folder\n"); break;
+		case 21: out("  there is no such name\n"); break;
+		case 22: out("  that is a file: type 'read' and its name\n"); break;
+		case 23: out("  that is a folder: type 'files' and its name\n"); break;
+		default: out("  no FAT32 file system was found (code "); out_dec(swin->status); out(")\n");
+		}
+		colour = FG; return;
+	}
+	if (mode == 1) {
+		colour = DIM; out("  "); out(path); out(", "); out_size(swin->file_size);
+		out(swin->file_size > swin->text_len ? ", its start:\n" : ":\n"); colour = FG;
+		out("  ");
+		for (unsigned i = 0; i < swin->text_len && i < SMRTI_TEXT; i++) {
+			char c = swin->text[i];
+			if (c == '\n') out("\n  ");
+			else { char t[2] = { (c >= 32 && c < 127) ? c : '.', 0 }; out(t); }
+		}
+		out("\n");
+		return;
 	}
 	colour = DIM; out("  volume     "); colour = FG; out(swin->label); colour = DIM; out("  "); out(swin->fs); out(" at block "); out_dec(swin->part_lba);
-	out(", "); out_dec(swin->total); out(swin->total == 1 ? " entry in the top folder\n" : " entries in the top folder\n"); colour = FG;
+	out(", "); out(path[0] ? path : "top folder"); out(": "); out_dec(swin->total); out(swin->total == 1 ? " entry\n" : " entries\n"); colour = FG;
 	for (unsigned i = 0; i < swin->count && i < SMRTI_MAX; i++) {
 		SmrtiEntry &e = swin->e[i];
 		e.name[sizeof e.name - 1] = 0;                                   /* Smrti's answer is outside content too */

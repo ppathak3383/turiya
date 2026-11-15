@@ -1,0 +1,19 @@
+turiya> Turiya: ready
+files
+  Smrti reads the files (FAT32; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, top folder: 3 entries
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+turiya> files Photos
+  Smrti reads the files (FAT32; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, Photos: 1 entry
+    A long file name.jpg                    123 KB    
+turiya> read Notes for later.txt
+  Smrti reads the files (FAT32; it only reads, and only through Nadi)
+  Notes for later.txt, 21 bytes:
+  hello from the stick
+turiya> read nothing.txt
+  Smrti reads the files (FAT32; it only reads, and only through Nadi)
+  there is no such name
+turiya> 

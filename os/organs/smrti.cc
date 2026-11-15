@@ -68,19 +68,12 @@ static uint32_t fat_next(uint32_t c)
 	return u32(D + off % bs) & 0x0fffffff;
 }
 
-static void add_name_char(char *n, unsigned &k, uint16_t ch)
+/* ---- mounting: find the FAT32 partition and read its boot sector ---- */
+static uint32_t mount(void)
 {
-	if (k + 1 >= sizeof(((SmrtiEntry *)0)->name)) return;
-	n[k++] = (ch >= 32 && ch < 127) ? (char)ch : '?';
-}
-
-static uint32_t list_root(void)
-{
-	W->count = 0; W->total = 0; W->label[0] = 0; W->fs[0] = 0;
+	W->label[0] = 0; W->fs[0] = 0;
 	bs = W->block_size;
 	if (bs < 512 || bs > 4096 || (bs & (bs - 1))) return 1;
-
-	/* find a FAT partition: MBR types 0x0b/0x0c (FAT32), or a GPT basic-data partition, or a bare file system */
 	if (!need(0, 1)) return 2;
 	part = 0;
 	bool mbr = D[510] == 0x55 && D[511] == 0xaa;
@@ -89,7 +82,6 @@ static uint32_t list_root(void)
 			uint8_t t = D[446 + 16 * i + 4];
 			if (t == 0x0b || t == 0x0c) part = u32(D + 446 + 16 * i + 8);
 		}
-		if (!part && u16(D + 11) == bs && D[13]) part = 0;                     /* a file system without partitions */
 	} else if (mbr) {
 		if (!need(1, 1)) return 3;
 		static const char sig[] = "EFI PART";
@@ -110,17 +102,15 @@ static uint32_t list_root(void)
 	}
 	W->part_lba = part;
 	if (part >= W->blocks) return 7;
-
-	/* the boot sector of the file system */
 	if (!need(part, 1)) return 8;
 	if (D[510] != 0x55 || D[511] != 0xaa) return 9;
-	if (u16(D + 11) != bs) return 10;                       /* sector size must be the device's block size */
+	if (u16(D + 11) != bs) return 10;
 	spc = D[13];
 	uint32_t reserved = u16(D + 14), nfats = D[16];
 	fat_size = u32(D + 36);
 	root_cluster = u32(D + 44);
 	uint32_t total = u16(D + 19) ? u16(D + 19) : u32(D + 32);
-	if (!spc || (spc & (spc - 1)) || !nfats || nfats > 4 || !fat_size || u16(D + 22) != 0 || root_cluster < 2) return 11;   /* FAT32 only */
+	if (!spc || (spc & (spc - 1)) || !nfats || nfats > 4 || !fat_size || u16(D + 22) != 0 || root_cluster < 2) return 11;
 	for (int i = 0; i < 11; i++) W->label[i] = (D[71 + i] >= 32 && D[71 + i] < 127) ? (char)D[71 + i] : ' ';
 	W->label[11] = 0;
 	for (int i = 0; i < 8; i++) W->fs[i] = (D[82 + i] >= 32 && D[82 + i] < 127) ? (char)D[82 + i] : ' ';
@@ -130,11 +120,20 @@ static uint32_t list_root(void)
 	if (total <= data_lba - part) return 12;
 	total_clusters = (uint32_t)((total - (data_lba - part)) / spc);
 	if (root_cluster >= total_clusters + 2) return 13;
+	return 0;
+}
 
-	/* walk the top folder's clusters, at most 256 of them */
-	char lfn[48]; unsigned lfn_k = 0; bool have_lfn = false;
-	uint32_t c = root_cluster;
-	for (unsigned hops = 0; hops < 256 && c >= 2 && c < total_clusters + 2; hops++) {
+static bool cluster_ok(uint32_t c) { return c >= 2 && c < total_clusters + 2; }
+
+/* ---- walking a folder: fn(name, attr, first cluster, size) for every entry; fn returns false to stop ---- */
+struct Found { char name[48]; uint8_t attr; uint32_t cluster, size; };
+typedef bool (*Visit)(Found const &f, void *ctx);
+
+static uint32_t walk(uint32_t dir, Visit fn, void *ctx)
+{
+	char lfn[48]; bool have_lfn = false;
+	uint32_t c = dir;
+	for (unsigned hops = 0; hops < 256 && cluster_ok(c); hops++) {
 		uint64_t first = data_lba + (uint64_t)(c - 2) * spc;
 		for (uint32_t s = 0; s < spc; s++) {
 			if (!need(first + s, 1)) return 14;
@@ -146,29 +145,111 @@ static uint32_t list_root(void)
 				if (attr == 0x0f) {                                                /* a piece of a long name */
 					unsigned seq = e[0] & 0x1f;
 					if (e[0] & 0x40) { memset(lfn, 0, sizeof lfn); have_lfn = true; }
-					if (!seq || seq > 3) { have_lfn = false; continue; }           /* keep names under 40 characters */
-					char part13[13]; unsigned k = 0;
+					if (!seq || seq > 3) { have_lfn = false; continue; }           /* names under 40 characters */
 					static const uint8_t at[13] = { 1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30 };
-					for (int j = 0; j < 13; j++) { uint16_t ch = u16(e + at[j]); if (!ch || ch == 0xffff) break; part13[k++] = (ch >= 32 && ch < 127) ? (char)ch : '?'; }
-					for (unsigned j = 0; j < k && (seq - 1) * 13 + j < sizeof lfn - 1; j++) lfn[(seq - 1) * 13 + j] = part13[j];
-					lfn_k = 1;
+					for (unsigned j = 0; j < 13; j++) {
+						uint16_t ch = u16(e + at[j]);
+						if (!ch || ch == 0xffff) break;
+						unsigned pos = (seq - 1) * 13 + j;
+						if (pos < sizeof lfn - 1) lfn[pos] = (ch >= 32 && ch < 127) ? (char)ch : '?';
+					}
 					continue;
 				}
 				if (attr & 0x08) { have_lfn = false; continue; }                   /* the volume label */
-				W->total++;
-				if (W->count < SMRTI_MAX) {
-					SmrtiEntry &out = W->e[W->count++];
-					unsigned k = 0;
-					if (have_lfn && lfn_k && lfn[0]) { for (unsigned j = 0; j < sizeof lfn - 1 && lfn[j]; j++) add_name_char(out.name, k, (uint8_t)lfn[j]); }
-					else {
-						for (int j = 0; j < 8 && e[j] != ' '; j++) add_name_char(out.name, k, e[j]);
-						if (e[8] != ' ') { add_name_char(out.name, k, '.'); for (int j = 8; j < 11 && e[j] != ' '; j++) add_name_char(out.name, k, e[j]); }
-					}
-					out.name[k] = 0;
-					out.size = u32(e + 28);
-					out.dir = (attr & 0x10) ? 1 : 0;
+				Found f;
+				unsigned k = 0;
+				if (have_lfn && lfn[0]) { for (unsigned j = 0; j < sizeof lfn - 1 && lfn[j]; j++) f.name[k++] = lfn[j]; }
+				else {
+					for (int j = 0; j < 8 && e[j] != ' '; j++) f.name[k++] = (e[j] >= 32 && e[j] < 127) ? (char)e[j] : '?';
+					if (e[8] != ' ') { f.name[k++] = '.'; for (int j = 8; j < 11 && e[j] != ' '; j++) f.name[k++] = (e[j] >= 32 && e[j] < 127) ? (char)e[j] : '?'; }
 				}
-				have_lfn = false; lfn_k = 0;
+				f.name[k] = 0;
+				f.attr = attr; f.size = u32(e + 28);
+				f.cluster = (uint32_t)u16(e + 20) << 16 | u16(e + 26);
+				have_lfn = false;
+				bool go_on = fn(f, ctx);
+				if (!go_on) return 0;
+			}
+		}
+		c = fat_next(c);
+	}
+	return 0;
+}
+
+static bool list_one(Found const &f, void *)
+{
+	if (f.name[0] == '.' && (!f.name[1] || (f.name[1] == '.' && !f.name[2]))) return true;    /* . and .. */
+	W->total++;
+	if (W->count < SMRTI_MAX) {
+		SmrtiEntry &out = W->e[W->count++];
+		unsigned k = 0;
+		while (f.name[k] && k < sizeof out.name - 1) { out.name[k] = f.name[k]; k++; }
+		out.name[k] = 0;
+		out.size = f.size; out.dir = (f.attr & 0x10) ? 1 : 0;
+	}
+	return true;
+}
+
+/* find one name (any letter case) in a folder */
+struct Want { const char *name; unsigned len; bool hit; Found f; };
+static bool find_one(Found const &f, void *ctx)
+{
+	Want &w = *(Want *)ctx;
+	unsigned k = 0;
+	for (; k < w.len && f.name[k]; k++) {
+		char a = f.name[k], b = w.name[k];
+		if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+		if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+		if (a != b) return true;
+	}
+	if (k == w.len && !f.name[k]) { w.hit = true; w.f = f; return false; }
+	return true;
+}
+
+/* follow a path; *out is what it names. 0, or a code */
+static uint32_t resolve(const char *path, Found *out)
+{
+	memset(out, 0, sizeof *out);
+	out->attr = 0x10; out->cluster = root_cluster;
+	const char *p = path;
+	for (unsigned depth = 0; *p && depth < 8; depth++) {
+		while (*p == '/') p++;
+		if (!*p) break;
+		const char *q = p; while (*q && *q != '/') q++;
+		if (!(out->attr & 0x10)) return 20;                                        /* a file is not a folder */
+		Want w { p, (unsigned)(q - p), false, {} };
+		if (uint32_t r = walk(out->cluster ? out->cluster : root_cluster, find_one, &w)) return r;
+		if (!w.hit) return 21;                                                     /* no such name */
+		*out = w.f;
+		if ((out->attr & 0x10) && !out->cluster) out->cluster = root_cluster;      /* '..' to the top folder */
+		p = q;
+	}
+	return 0;
+}
+
+static uint32_t serve(void)
+{
+	W->count = 0; W->total = 0; W->text_len = 0; W->file_size = 0;
+	if (uint32_t r = mount()) return r;
+	char path[64]; unsigned n = 0;
+	while (n < sizeof path - 1 && W->path[n]) { path[n] = W->path[n]; n++; }
+	path[n] = 0;
+	Found f;
+	if (uint32_t r = resolve(path, &f)) return r;
+	if (W->mode == 0) {
+		if (!(f.attr & 0x10)) return 22;                                           /* asked to list a file */
+		return walk(f.cluster, list_one, nullptr);
+	}
+	if (f.attr & 0x10) return 23;                                                  /* asked to read a folder */
+	W->file_size = f.size;
+	uint32_t c = f.cluster, left = f.size < (uint32_t)SMRTI_TEXT ? f.size : (uint32_t)SMRTI_TEXT;
+	for (unsigned hops = 0; left && hops < 16 && cluster_ok(c); hops++) {
+		uint64_t first = data_lba + (uint64_t)(c - 2) * spc;
+		for (uint32_t s = 0; s < spc && left; s++) {
+			if (!need(first + s, 1)) return 14;
+			for (uint32_t i = 0; i < bs && left; i++, left--) {
+				uint8_t ch = D[i];
+				W->text[W->text_len++] = (ch == '\n' || ch == '\t' || (ch >= 32 && ch < 127)) ? (char)ch : '.';
 			}
 		}
 		c = fat_next(c);
@@ -186,7 +267,7 @@ extern "C" void smrti_main(seL4_Word gen, seL4_Word ipc)
 		if (bits & N_FALL) *(volatile uint32_t *)0x8000000000UL = 0;            /* the crash test */
 		if (bits & N_REQ) {
 			uint32_t seq = W->req_seq;
-			W->status = list_root();
+			W->status = serve();
 			W->done_seq = seq;
 			say(L_DONE, seq, W->status);
 		}

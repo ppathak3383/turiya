@@ -489,7 +489,8 @@ static void help(void)
 	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
 	out("  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)\n");
 	out("  stick                    read a USB stick's partition table (only read commands exist)\n");
-	out("  files                    the files in the top folder of a USB stick (FAT32, read by Smrti)\n");
+	out("  files [folder]           the files on a USB stick (FAT32, read by Smrti)\n");
+	out("  read <file>              the start of a file on the stick, as text\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");
 	out("  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000\n");
@@ -892,10 +893,23 @@ static void clear_screen(void)
 static void do_disk(void);
 static void do_usb(void);
 static void do_stick(void);
-static void do_files(void);
+static void do_files(const char *path, unsigned mode);
 
 static void execute(char *l)
 {
+	/* files [folder] and read <file>: the rest of the line is a path, spaces and all */
+	{
+		const char *p = l; while (*p == ' ') p++;
+		bool f = p[0] == 'f' && p[1] == 'i' && p[2] == 'l' && p[3] == 'e' && p[4] == 's' && (!p[5] || p[5] == ' ');
+		bool r = p[0] == 'r' && p[1] == 'e' && p[2] == 'a' && p[3] == 'd' && (!p[4] || p[4] == ' ');
+		if (f || r) {
+			p += f ? 5 : 4;
+			while (*p == ' ') p++;
+			if (r && !*p) { colour = DIM; out("  read what? e.g.  read HELLO.TXT\n"); colour = FG; return; }
+			do_files(p, r ? 1 : 0);
+			return;
+		}
+	}
 	/* split into at most 4 words */
 	char *w[4] = { 0, 0, 0, 0 }; int n = 0;
 	for (char *p = l; *p && n < 4; ) {
@@ -915,7 +929,6 @@ static void execute(char *l)
 	if (streq(w[0], "disk")) { do_disk(); return; }
 	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "stick")) { do_stick(); return; }
-	if (streq(w[0], "files")) { do_files(); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
 			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;

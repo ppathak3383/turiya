@@ -15,3 +15,14 @@ from a read-only view of Nadi's data page.
 |---|---|
 | `files` | TURIYATEST, FAT32 at block 2048, 3 entries: HELLO.TXT 21 bytes, Photos (folder), "Notes for later.txt" 21 bytes (a long name) |
 | `crash smrti`, then `files` | fell at ip 0x4011ff touching 0x8000000000; healed in 2.0 ms; the same listing |
+
+## Folders and reading a file
+
+`files <folder>` lists any folder (a path of up to 8 names, any letter case, spaces allowed); `read <file>`
+shows the first 1,024 bytes of a file as text (anything not printable shown as a dot).
+
+| Test | Result |
+|---|---|
+| `files Photos` | 1 entry: "A long file name.jpg", 123 KB |
+| `read Notes for later.txt` | 21 bytes: "hello from the stick" |
+| `read nothing.txt` | "there is no such name" |
