@@ -1,0 +1,19 @@
+--- /root/turiya0/patches/multiboot.S.orig	2026-11-15 06:55:23.265059144 +0000
++++ /root/gb/genode/contrib/sel4-54809b28d155db2e1ab83120937bde016a56fcb9/src/kernel/sel4/src/arch/x86/multiboot.S	2026-11-15 06:55:23.281375670 +0000
+@@ -66,6 +66,16 @@
+     .long   0x0
+     .long   (__mbi2_end - __mbi2_start)
+     .long  -(0xe85250d6 + (__mbi2_end - __mbi2_start))
++    /* Turiya: framebuffer request tag (type 5, optional, any mode), so a UEFI boot loader
++     * passes the firmware's screen on to the first program */
++    .align  8
++    .word   0x5
++    .word   0x1
++    .long   20
++    .long   0
++    .long   0
++    .long   32
++    .align  8
+     /* end tag - type, flags, size */
+     .word   0x0
+     .word   0x0
