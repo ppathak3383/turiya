@@ -26,3 +26,15 @@ shows the first 1,024 bytes of a file as text (anything not printable shown as a
 | `files Photos` | 1 entry: "A long file name.jpg", 123 KB |
 | `read Notes for later.txt` | 21 bytes: "hello from the stick" |
 | `read nothing.txt` | "there is no such name" |
+
+## exFAT
+
+Most sticks larger than 32 GB come formatted as exFAT. Smrti now reads it too: entry sets (file, stream
+extension, name pieces), the volume label, folders kept as one contiguous run of clusters or as a FAT chain.
+
+| Test (a 63 MiB exFAT volume made with mkfs.exfat; files placed by hand) | Result |
+|---|---|
+| `files` | TURIYAEX, exFAT, 2 entries: Readme.txt 28 bytes, Docs (folder) |
+| `files docs` (any letter case) | "A rather long document name.txt", 36 bytes |
+| `read docs/A rather long document name.txt` | "second file, inside the Docs folder" |
+| FAT32 stick afterwards | `files Photos` and `read hello.txt` unchanged |

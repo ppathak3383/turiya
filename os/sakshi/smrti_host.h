@@ -31,7 +31,7 @@ static void do_files(const char *path, unsigned mode)
 	stick_k = -1;
 	for (unsigned k = 0; k < nxhci && stick_k < 0; k++)
 		if (NADIS[k]->awake && nwins[k] && nwins[k]->storage_slot) stick_k = (int)k;
-	colour = SAFFRON; out("  Smrti reads the files "); colour = DIM; out("(FAT32; it only reads, and only through Nadi)\n"); colour = FG;
+	colour = SAFFRON; out("  Smrti reads the files "); colour = DIM; out("(FAT32 or exFAT; it only reads, and only through Nadi)\n"); colour = FG;
 	if (stick_k < 0) { colour = DIM; out("  no USB stick is ready; 'usb' shows what is plugged in\n"); colour = FG; return; }
 	if (smrti.made && smrti_k != stick_k) { colour = DIM; out("  the stick moved to the other USB controller; restart to read it\n"); colour = FG; return; }
 	if (!smrti.made) {
@@ -61,7 +61,7 @@ static void do_files(const char *path, unsigned mode)
 		case 21: out("  there is no such name\n"); break;
 		case 22: out("  that is a file: type 'read' and its name\n"); break;
 		case 23: out("  that is a folder: type 'files' and its name\n"); break;
-		default: out("  no FAT32 file system was found (code "); out_dec(swin->status); out(")\n");
+		default: out("  no FAT32 or exFAT file system was found (code "); out_dec(swin->status); out(")\n");
 		}
 		colour = FG; return;
 	}

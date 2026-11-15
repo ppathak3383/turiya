@@ -489,7 +489,7 @@ static void help(void)
 	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
 	out("  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)\n");
 	out("  stick                    read a USB stick's partition table (only read commands exist)\n");
-	out("  files [folder]           the files on a USB stick (FAT32, read by Smrti)\n");
+	out("  files [folder]           the files on a USB stick (FAT32 or exFAT, read by Smrti)\n");
 	out("  read <file>              the start of a file on the stick, as text\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");

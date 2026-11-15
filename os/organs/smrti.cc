@@ -1,8 +1,8 @@
 /*
  * SPDX-License-Identifier: AGPL-3.0-or-later
- * Turiya - Smrti (memory, what is remembered): the organ that reads a FAT32 file system.
+ * Turiya - Smrti (memory, what is remembered): the organ that reads FAT32 and exFAT file systems.
  *
- * Svadharma, its one duty: find the FAT32 partition on a disk or stick and list the files in its top folder.
+ * Svadharma, its one duty: find the FAT32 or exFAT partition on a disk or stick, list its folders, read a file's start.
  *
  * Maryada, its limits: 1 fault channel, 2 send-only channel to Sakshi, 3 its notification. A READ-ONLY view of
  * the block device's data page, and a window shared with Sakshi. It cannot reach any device: when it needs a
@@ -60,6 +60,7 @@ static bool need(uint64_t lba, uint32_t count)
 /* one sector's worth of data (block size is 512..4096; FAT sector size must equal it) */
 static uint64_t part, fat_lba, data_lba;
 static uint32_t bs, spc, root_cluster, fat_size, total_clusters;
+static bool exfat;                                                  /* exFAT rather than FAT32 */
 
 static uint32_t fat_next(uint32_t c)
 {
@@ -80,7 +81,7 @@ static uint32_t mount(void)
 	if (mbr && D[450] != 0xee) {
 		for (int i = 0; i < 4 && !part; i++) {
 			uint8_t t = D[446 + 16 * i + 4];
-			if (t == 0x0b || t == 0x0c) part = u32(D + 446 + 16 * i + 8);
+			if (t == 0x0b || t == 0x0c || t == 0x07) part = u32(D + 446 + 16 * i + 8);
 		}
 	} else if (mbr) {
 		if (!need(1, 1)) return 3;
@@ -104,7 +105,24 @@ static uint32_t mount(void)
 	if (part >= W->blocks) return 7;
 	if (!need(part, 1)) return 8;
 	if (D[510] != 0x55 || D[511] != 0xaa) return 9;
+	static const char exsig[] = "EXFAT   ";
+	exfat = true;
+	for (int i = 0; i < 8; i++) exfat &= D[3 + i] == (uint8_t)exsig[i];
+	if (exfat) {                                                                  /* exFAT */
+		if (D[108] < 9 || D[108] > 12 || (1u << D[108]) != bs || D[109] > 16) return 15;
+		spc = 1u << D[109];
+		fat_lba = part + u32(D + 80);
+		data_lba = part + u32(D + 88);
+		total_clusters = u32(D + 92);
+		root_cluster = u32(D + 96);
+		if (!total_clusters || root_cluster < 2 || root_cluster >= total_clusters + 2) return 16;
+		const char fsn[] = "exFAT";
+		for (int i = 0; i < 6; i++) W->fs[i] = fsn[i];
+		return 0;
+	}
 	if (u16(D + 11) != bs) return 10;
+	const char f32[] = "FAT32";
+	(void)f32;
 	spc = D[13];
 	uint32_t reserved = u16(D + 14), nfats = D[16];
 	fat_size = u32(D + 36);
@@ -126,8 +144,58 @@ static uint32_t mount(void)
 static bool cluster_ok(uint32_t c) { return c >= 2 && c < total_clusters + 2; }
 
 /* ---- walking a folder: fn(name, attr, first cluster, size) for every entry; fn returns false to stop ---- */
-struct Found { char name[48]; uint8_t attr; uint32_t cluster, size; };
+struct Found { char name[48]; uint8_t attr; uint32_t cluster, size; bool contig; uint64_t length; };
 typedef bool (*Visit)(Found const &f, void *ctx);
+
+/* exFAT: entry sets (file 0x85, stream 0xc0, names 0xc1); a folder may be one contiguous run of clusters */
+static uint32_t walk_ex(uint32_t dir, bool contig, uint64_t length, Visit fn, void *ctx)
+{
+	Found f; unsigned left = 0, nlen = 0, k = 0; bool in_set = false;
+	uint64_t csize = (uint64_t)spc * bs, nclus = contig ? (length + csize - 1) / csize : 256;
+	uint32_t c = dir;
+	for (unsigned hops = 0; hops < 256 && hops < nclus && cluster_ok(c); hops++) {
+		uint64_t first = data_lba + (uint64_t)(c - 2) * spc;
+		for (uint32_t s = 0; s < spc; s++) {
+			if (!need(first + s, 1)) return 14;
+			for (uint32_t off = 0; off + 32 <= bs; off += 32) {
+				const volatile uint8_t *e = D + off;
+				uint8_t t = e[0];
+				if (t == 0) return 0;                                              /* the end of the folder */
+				if (t == 0x83) {                                                   /* the volume label */
+					unsigned n = e[1] < 11 ? e[1] : 11;
+					for (unsigned j = 0; j < n; j++) { uint16_t ch = u16(e + 2 + 2 * j); W->label[j] = (ch >= 32 && ch < 127) ? (char)ch : '?'; }
+					W->label[n] = 0;
+					continue;
+				}
+				if (t == 0x85) {                                                   /* a file or folder begins */
+					memset(&f, 0, sizeof f);
+					left = e[1]; f.attr = (u16(e + 4) & 0x10) ? 0x10 : 0x20; in_set = left >= 2; nlen = 0; k = 0;
+					continue;
+				}
+				if (!in_set || t < 0xc0) { in_set = false; continue; }
+				if (t == 0xc0) {
+					nlen = e[3];
+					f.cluster = u32(e + 20);
+					f.length = (uint64_t)u32(e + 24) | (uint64_t)u32(e + 28) << 32;
+					f.size = f.length > 0xffffffffULL ? 0xffffffffu : (uint32_t)f.length;
+					f.contig = e[1] & 2;
+				} else if (t == 0xc1) {
+					for (unsigned j = 0; j < 15 && k < nlen && k < sizeof f.name - 1; j++, k++) {
+						uint16_t ch = u16(e + 2 + 2 * j);
+						f.name[k] = (ch >= 32 && ch < 127) ? (char)ch : '?';
+					}
+				}
+				if (--left == 0) {                                                 /* the set is complete */
+					in_set = false;
+					f.name[k < sizeof f.name ? k : sizeof f.name - 1] = 0;
+					if (!fn(f, ctx)) return 0;
+				}
+			}
+		}
+		c = contig ? c + 1 : fat_next(c);
+	}
+	return 0;
+}
 
 static uint32_t walk(uint32_t dir, Visit fn, void *ctx)
 {
@@ -176,6 +244,13 @@ static uint32_t walk(uint32_t dir, Visit fn, void *ctx)
 	return 0;
 }
 
+static uint32_t walk_any(Found const &dir, Visit fn, void *ctx)
+{
+	uint32_t c = dir.cluster ? dir.cluster : root_cluster;
+	if (exfat) return walk_ex(c, dir.cluster ? dir.contig : false, dir.length, fn, ctx);
+	return walk(c, fn, ctx);
+}
+
 static bool list_one(Found const &f, void *)
 {
 	if (f.name[0] == '.' && (!f.name[1] || (f.name[1] == '.' && !f.name[2]))) return true;    /* . and .. */
@@ -218,7 +293,7 @@ static uint32_t resolve(const char *path, Found *out)
 		const char *q = p; while (*q && *q != '/') q++;
 		if (!(out->attr & 0x10)) return 20;                                        /* a file is not a folder */
 		Want w { p, (unsigned)(q - p), false, {} };
-		if (uint32_t r = walk(out->cluster ? out->cluster : root_cluster, find_one, &w)) return r;
+		if (uint32_t r = walk_any(*out, find_one, &w)) return r;
 		if (!w.hit) return 21;                                                     /* no such name */
 		*out = w.f;
 		if ((out->attr & 0x10) && !out->cluster) out->cluster = root_cluster;      /* '..' to the top folder */
@@ -238,7 +313,7 @@ static uint32_t serve(void)
 	if (uint32_t r = resolve(path, &f)) return r;
 	if (W->mode == 0) {
 		if (!(f.attr & 0x10)) return 22;                                           /* asked to list a file */
-		return walk(f.cluster, list_one, nullptr);
+		return walk_any(f, list_one, nullptr);
 	}
 	if (f.attr & 0x10) return 23;                                                  /* asked to read a folder */
 	W->file_size = f.size;
@@ -252,7 +327,7 @@ static uint32_t serve(void)
 				W->text[W->text_len++] = (ch == '\n' || ch == '\t' || (ch >= 32 && ch < 127)) ? (char)ch : '.';
 			}
 		}
-		c = fat_next(c);
+		c = (exfat && f.contig) ? c + 1 : fat_next(c);
 	}
 	return 0;
 }
