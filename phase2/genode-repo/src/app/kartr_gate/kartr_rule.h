@@ -9,6 +9,14 @@
  * action: a field containing '|', an over-long (truncated) field, or an empty target.
  * Any other type runs only if the owner's mandate lists it exactly (as in Phase 0); an unknown
  * type, or a near-miss such as "Pay", is blocked, never treated as harmless.
+ *
+ * Outside targets (Phase 0's rule, steps 1e + 5b):
+ *  - 'outside' (from the fetcher, never the agent): a target found in the body of what the agent
+ *    read is planted and needs the owner's exact approval, even for a reversible draft.
+ *  - 'known_targets' (owner's config): when given, a reversible action may name only a listed
+ *    target, the sender of the fetched message, or no target at all. Anything else (a stranger, a
+ *    near-miss such as "papa ", a list "papa,kyc-desk@okaxis") also needs the owner's approval.
+ *    The component always passes a list (default-deny); nullptr keeps the 1e behaviour for tests.
  */
 #ifndef _TURIYA__KARTR_RULE_H_
 #define _TURIYA__KARTR_RULE_H_
@@ -193,6 +201,20 @@ namespace Turiya {
 		return false;
 	}
 
+	/* the address on the fetched message's source line ("From: x"), compared case-insensitively */
+	inline bool is_sender(char const *target, char const *outside)
+	{
+		if (!outside || !*target) return false;
+		char const *p = outside;
+		char const pre[] = "from:";
+		for (unsigned i = 0; pre[i]; i++, p++) if (lower(*p) != pre[i]) return false;
+		while (*p == ' ' || *p == '\t') p++;
+		usize i = 0;
+		for (; target[i]; i++) if (lower(p[i]) != lower(target[i])) return false;
+		while (p[i] == ' ' || p[i] == '\t' || p[i] == '\r') i++;
+		return p[i] == '\n' || p[i] == 0;
+	}
+
 	/* the owner's mandate: reversible types this agent may use; a null-terminated list */
 	static char const * const DEFAULT_MANDATE[] = { "summarise", "draft_reply", "add_reminder", nullptr };
 
@@ -211,16 +233,20 @@ namespace Turiya {
 	                      char const *type, char const *target, char const *amount,
 	                      char const *approval_hex, bool truncated,
 	                      char const * const *mandate = DEFAULT_MANDATE,
-	                      char const *outside = nullptr)
+	                      char const *outside = nullptr,
+	                      char const * const *known_targets = nullptr)
 	{
 		if (truncated || !field_ok(type, false) || !field_ok(amount, false))
 			return Verdict::HELD_BAD_INPUT;
 
-		bool const planted = target_from_outside(target, outside);
+		bool planted = target_from_outside(target, outside);
 
 		if (!irreversible(type)) {
 			if (!in_mandate(mandate, type)) return Verdict::BLOCKED_OUTSIDE_MANDATE;
 			if (!field_ok(target, true)) return Verdict::HELD_BAD_INPUT;
+			if (known_targets && target[0] && !in_mandate(known_targets, target)
+			 && !is_sender(target, outside))
+				planted = true;                       /* not a target the owner knows */
 			if (!planted) return Verdict::ALLOWED;
 			/* a reversible act on a planted target also needs the owner's exact approval */
 		} else if (!field_ok(target, false))

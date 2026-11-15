@@ -48,6 +48,11 @@ struct Turiya::Main
 	Field        _mandate_store[MANDATE_MAX];
 	char const  *_mandate[MANDATE_MAX + 1] { };
 
+	/* the owner's known targets; always passed to decide(), so an empty list = default-deny */
+	enum { KNOWN_MAX = 16 };
+	Field        _known_store[KNOWN_MAX];
+	char const  *_known[KNOWN_MAX + 1] { };
+
 	u8    _key[64] { };
 	usize _key_len = 0;
 
@@ -68,6 +73,19 @@ struct Turiya::Main
 				_mandate_store[n++] = Field(*d);
 		for (unsigned i = 0; i < n; i++) _mandate[i] = _mandate_store[i].string();
 		_mandate[n] = nullptr;
+
+		/* <known_target name="papa"/>; an over-long name is skipped, extras beyond KNOWN_MAX ignored:
+		   both fail closed (the target is then simply not known) */
+		unsigned k = 0;
+		config.for_each_sub_node("known_target", [&] (Genode::Node const &t) {
+			Field const name = t.attribute_value("name", Field());
+			if (k < KNOWN_MAX && name.length() > 1 && slen(name.string()) <= FIELD_MAX
+			 && field_ok(name.string(), false))
+				_known_store[k++] = name; });
+		for (unsigned i = 0; i < k; i++) _known[i] = _known_store[i].string();
+		_known[k] = nullptr;
+		if (k == 0)
+			Genode::warning("no known targets configured: reversible actions may name only the sender");
 	}
 
 	void _handle_actions()
@@ -96,7 +114,7 @@ struct Turiya::Main
 				bool const truncated = slen(appr.string()) > 64;
 
 				Verdict const v = decide(_key, _key_len, type.string(), target.string(),
-				                         amount.string(), appr.string(), truncated, _mandate, _outside_text);
+				                         amount.string(), appr.string(), truncated, _mandate, _outside_text, _known);
 				is_held(v) ? held++ : allowed++;
 
 				Genode::log("[", id, "] ", verdict_name(v), ": ", type, " ", target, " ", amount);

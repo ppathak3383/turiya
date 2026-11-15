@@ -9,6 +9,14 @@
  * action: a field containing '|', an over-long (truncated) field, or an empty target.
  * Any other type runs only if the owner's mandate lists it exactly (as in Phase 0); an unknown
  * type, or a near-miss such as "Pay", is blocked, never treated as harmless.
+ *
+ * Outside targets (Phase 0's rule, steps 1e + 5b):
+ *  - 'outside' (from the fetcher, never the agent): a target found in the body of what the agent
+ *    read is planted and needs the owner's exact approval, even for a reversible draft.
+ *  - 'known_targets' (owner's config): when given, a reversible action may name only a listed
+ *    target, the sender of the fetched message, or no target at all. Anything else (a stranger, a
+ *    near-miss such as "papa ", a list "papa,kyc-desk@okaxis") also needs the owner's approval.
+ *    The component always passes a list (default-deny); nullptr keeps the 1e behaviour for tests.
  */
 #ifndef _TURIYA__KARTR_RULE_H_
 #define _TURIYA__KARTR_RULE_H_
@@ -22,7 +30,7 @@ namespace Turiya {
 	enum { FIELD_MAX = 63 };   /* longest type/target/amount accepted (Genode String<64>) */
 
 	enum class Verdict { ALLOWED, ALLOWED_APPROVED, HELD_NEEDS_APPROVAL, HELD_MISMATCH, HELD_BAD_INPUT,
-	                     BLOCKED_OUTSIDE_MANDATE };
+	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET };
 
 	inline char const *verdict_name(Verdict v)
 	{
@@ -33,6 +41,7 @@ namespace Turiya {
 		case Verdict::HELD_MISMATCH:       return "held_approval_mismatch";
 		case Verdict::HELD_BAD_INPUT:      return "held_bad_input";
 		case Verdict::BLOCKED_OUTSIDE_MANDATE: return "blocked_outside_mandate";
+		case Verdict::HELD_OUTSIDE_TARGET: return "held_target_from_outside_content";
 		}
 		return "held_bad_input";
 	}
@@ -158,6 +167,54 @@ namespace Turiya {
 		return true;
 	}
 
+
+	inline char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
+
+	/*
+	 * Phase 0's third rule. 'outside' is the text the agent read (mail, web page, message), handed
+	 * to the gate by the component that fetched it, not by the agent. Its first line is the source
+	 * line ("From: ..."); replying to the sender is normal, so only the body after it counts.
+	 * A target that looks like an address, account or link (has '@', '.', '/' or 6+ digits) and
+	 * appears in that body was planted by outside content: it needs the owner, even for a draft.
+	 */
+	inline bool entity_like(char const *t)
+	{
+		unsigned digits = 0;
+		for (char const *p = t; *p; p++) {
+			if (*p == '@' || *p == '.' || *p == '/') return true;
+			if (*p >= '0' && *p <= '9') digits++;
+		}
+		return digits >= 6;
+	}
+
+	inline bool target_from_outside(char const *target, char const *outside)
+	{
+		if (!outside || !*target || !entity_like(target)) return false;
+		char const *body = outside;
+		while (*body && *body != '\n') body++;          /* skip the source line */
+		usize const n = slen(target);
+		for (char const *p = body; *p; p++) {
+			usize i = 0;
+			while (i < n && p[i] && lower(p[i]) == lower(target[i])) i++;
+			if (i == n) return true;
+		}
+		return false;
+	}
+
+	/* the address on the fetched message's source line ("From: x"), compared case-insensitively */
+	inline bool is_sender(char const *target, char const *outside)
+	{
+		if (!outside || !*target) return false;
+		char const *p = outside;
+		char const pre[] = "from:";
+		for (unsigned i = 0; pre[i]; i++, p++) if (lower(*p) != pre[i]) return false;
+		while (*p == ' ' || *p == '\t') p++;
+		usize i = 0;
+		for (; target[i]; i++) if (lower(p[i]) != lower(target[i])) return false;
+		while (p[i] == ' ' || p[i] == '\t' || p[i] == '\r') i++;
+		return p[i] == '\n' || p[i] == 0;
+	}
+
 	/* the owner's mandate: reversible types this agent may use; a null-terminated list */
 	static char const * const DEFAULT_MANDATE[] = { "summarise", "draft_reply", "add_reminder", nullptr };
 
@@ -175,22 +232,29 @@ namespace Turiya {
 	inline Verdict decide(u8 const *key, usize key_len,
 	                      char const *type, char const *target, char const *amount,
 	                      char const *approval_hex, bool truncated,
-	                      char const * const *mandate = DEFAULT_MANDATE)
+	                      char const * const *mandate = DEFAULT_MANDATE,
+	                      char const *outside = nullptr,
+	                      char const * const *known_targets = nullptr)
 	{
 		if (truncated || !field_ok(type, false) || !field_ok(amount, false))
 			return Verdict::HELD_BAD_INPUT;
 
+		bool planted = target_from_outside(target, outside);
+
 		if (!irreversible(type)) {
 			if (!in_mandate(mandate, type)) return Verdict::BLOCKED_OUTSIDE_MANDATE;
-			return field_ok(target, true) ? Verdict::ALLOWED : Verdict::HELD_BAD_INPUT;
-		}
-
-		if (!field_ok(target, false))
+			if (!field_ok(target, true)) return Verdict::HELD_BAD_INPUT;
+			if (known_targets && target[0] && !in_mandate(known_targets, target)
+			 && !is_sender(target, outside))
+				planted = true;                       /* not a target the owner knows */
+			if (!planted) return Verdict::ALLOWED;
+			/* a reversible act on a planted target also needs the owner's exact approval */
+		} else if (!field_ok(target, false))
 			return Verdict::HELD_BAD_INPUT;
 
 		u8 given[32] { };
 		if (!key_len || unhex(approval_hex, given, 32) != 32)
-			return Verdict::HELD_NEEDS_APPROVAL;
+			return planted ? Verdict::HELD_OUTSIDE_TARGET : Verdict::HELD_NEEDS_APPROVAL;
 
 		char msg[3 * FIELD_MAX + 3];
 		usize m = 0;

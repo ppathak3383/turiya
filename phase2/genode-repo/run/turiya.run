@@ -22,6 +22,9 @@ config
     + mandate | type: summarise
     + mandate | type: draft_reply
     + mandate | type: add_reminder
+    + known_target | name: inbox
+    + known_target | name: sender
+    + known_target | name: papa
   + route
     + service Report | + child report_rom
     + any-service | + parent
@@ -46,6 +49,11 @@ puts $fd {actions
 + action | id: a13 | type: draft_reply | target: alerts@hdfcbank-kyc.example
 + action | id: a14 | type: draft_reply | target: kyc-desk@okaxis
 + action | id: a15 | type: pay | target: 9876543210@ybl | amount: 15000
++ action | id: a16 | type: draft_reply | target: papa
++ action | id: a17 | type: draft_reply | target: help@bank-verify.in
++ action | id: a18 | type: draft_reply | target: help@bank-verify.in | approval: f300b81745f2fa79b0dbe239caf3bf7bd6f0f8b3a75caae1de9db5471fdf9ec1
++ action | id: a19 | type: summarise | target: papa,kyc-desk@okaxis
++ action | id: a20 | type: draft_reply | target: Papa
 -}
 close $fd
 

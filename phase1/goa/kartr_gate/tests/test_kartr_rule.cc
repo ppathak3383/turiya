@@ -71,6 +71,31 @@ int main()
 	check("own payee, exact approval, with mail",      o("pay", "ramesh.kumar@ybl", "15000", APPR_PAY), Verdict::ALLOWED_APPROVED);
 	check("no outside content: old behaviour",         decide(key, key_len, "draft_reply", "kyc-desk@okaxis", "0", "", false), Verdict::ALLOWED);
 
+	/* step 5b: the owner's known targets (component passes a list always: default-deny) */
+	auto k = [&] (char const *t, char const *tg, char const *ap, char const *mail = MAIL,
+	              char const * const *known = KNOWN) {
+		return decide(key, key_len, t, tg, "0", ap, false, DEFAULT_MANDATE, mail, known); };
+	check("known 'papa' allowed",                      k("draft_reply", "papa", ""), Verdict::ALLOWED);
+	check("known 'inbox' allowed",                     k("summarise", "inbox", ""), Verdict::ALLOWED);
+	check("no target allowed",                         k("add_reminder", "", ""), Verdict::ALLOWED);
+	check("sender of the mail allowed (not listed)",   k("draft_reply", "alerts@hdfcbank-kyc.example", ""), Verdict::ALLOWED);
+	check("sender, other letter case, allowed",        k("draft_reply", "Alerts@HDFCbank-kyc.example", ""), Verdict::ALLOWED);
+	check("sender prefix only: held",                  k("draft_reply", "alerts@hdfcbank", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("unlisted stranger held",                    k("draft_reply", "help@bank-verify.in", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("stranger, owner's exact approval: allowed", k("draft_reply", "help@bank-verify.in", APPR_DRAFT_STRANGER), Verdict::ALLOWED_APPROVED);
+	check("'papa ' near-miss held",                    k("draft_reply", "papa ", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("'Papa' (case) not a known target: held",    k("draft_reply", "Papa", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("'papa,kyc-desk@okaxis' held",               k("summarise", "papa,kyc-desk@okaxis", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("planted address still held",                k("draft_reply", "kyc-desk@okaxis", ""), Verdict::HELD_OUTSIDE_TARGET);
+	check("known target also in body: held",           k("draft_reply", "accounts@example-firm.co", "", MAIL_FIRM), Verdict::HELD_OUTSIDE_TARGET);
+	check("empty known list: 'papa' held",             k("draft_reply", "papa", "", MAIL, KNOWN_NONE), Verdict::HELD_OUTSIDE_TARGET);
+	check("empty known list: sender still allowed",    k("draft_reply", "alerts@hdfcbank-kyc.example", "", MAIL, KNOWN_NONE), Verdict::ALLOWED);
+	check("empty known list, no mail: no-target ok",   k("summarise", "", "", nullptr, KNOWN_NONE), Verdict::ALLOWED);
+	check("empty known list, no mail: 'inbox' held",   k("summarise", "inbox", "", nullptr, KNOWN_NONE), Verdict::HELD_OUTSIDE_TARGET);
+	check("pay unchanged: own payee needs approval",   decide(key, key_len, "pay", "ramesh.kumar@ybl", "15000", "", false, DEFAULT_MANDATE, MAIL, KNOWN), Verdict::HELD_NEEDS_APPROVAL);
+	check("pay unchanged: exact approval allowed",     decide(key, key_len, "pay", "ramesh.kumar@ybl", "15000", APPR_PAY, false, DEFAULT_MANDATE, MAIL, KNOWN), Verdict::ALLOWED_APPROVED);
+	check("open_link still blocked by mandate",        k("open_link", "papa", ""), Verdict::BLOCKED_OUTSIDE_MANDATE);
+
 	std::printf("\n%d/%d pass\n", pass, pass + fail);
 	return fail ? 1 : 0;
 }
