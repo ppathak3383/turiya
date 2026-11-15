@@ -16,6 +16,8 @@ Turiya's own code.
 | `organs/kbd_i8042.h` | | keyboard tissue shared by Tvak and Sākṣī's reflex |
 | `stick/` | | builds the UEFI USB image |
 
+How it fits together: `ARCHITECTURE.md`.
+
 Build: `organs/build.sh` (the organs, their seeds, then Sākṣī), then `stick/build_usas.sh` (Uṣas and the image).
 
 Runs: `runs/` (first light on the HP, Uṣas on the HP, Tvak in the emulator).
