@@ -24,6 +24,12 @@ g++ $FL $INC $LD -o nadi nadi.cc
 strip -s -o nadi.seed nadi
 python3 mkseed.py nadi.seed NADI ../sakshi/nadi_seed.h
 
+# the Verus-proved gate decision: proof annotations stripped, built as a no_std library
+cd ../gate-rs
+python3 strip_verus.py gate.rs > gate_exec.rs
+rustc +stable --edition 2021 --crate-type staticlib --target x86_64-unknown-none -C panic=abort -C opt-level=s \
+      -C relocation-model=static -C code-model=small -o libgate_proved.a lib.rs 2>/dev/null
+
 cd ../sakshi
-g++ $FL $INC -I../organs $LD -o sakshi sakshi.cc
+g++ $FL $INC -I../organs $LD -o sakshi sakshi.cc ../gate-rs/libgate_proved.a
 ls -l sakshi | awk '{print "sakshi", $5, "bytes"}'

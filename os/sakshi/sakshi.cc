@@ -295,6 +295,39 @@ static const char *OUTSIDE =
 static Turiya::u8 key[64];
 static Turiya::usize klen;
 
+/* ---- two judges: the C++ rule (CBMC-checked) and the Verus-proved decision (Rust) must agree ---- */
+extern "C" uint32_t turiya_proved_decide(uint32_t flags, uint32_t state, const uint8_t *given, const uint8_t *expect);
+static unsigned long judges_agree, judges_differ;
+
+static Turiya::Verdict judge(const char *type, const char *target, const char *amount, const char *appr,
+                             bool trunc, const char *outside, Turiya::Avastha state)
+{
+	using namespace Turiya;
+	Verdict c = decide(key, klen, type, target, amount, appr, trunc, DEFAULT_MANDATE, outside, state);
+	u8 given[32] = { 0 }, expect[32] = { 0 };
+	bool hex_ok = unhex(appr, given, 32) == 32;
+	usize lt = Turiya::slen(type), lg = Turiya::slen(target), la = Turiya::slen(amount);
+	if (klen && lt <= FIELD_MAX && lg <= FIELD_MAX && la <= FIELD_MAX) {
+		char msg[3 * FIELD_MAX + 3]; usize m = 0;
+		for (usize i = 0; i < lt; i++) msg[m++] = type[i];
+		msg[m++] = '|';
+		for (usize i = 0; i < lg; i++) msg[m++] = target[i];
+		msg[m++] = '|';
+		for (usize i = 0; i < la; i++) msg[m++] = amount[i];
+		hmac(key, klen, msg, m, expect);
+	}
+	uint32_t f = (uint32_t)(!trunc && field_ok(type, false) && field_ok(amount, false))
+	           | (uint32_t)field_ok(target, true) << 1 | (uint32_t)(target[0] != 0) << 2
+	           | (uint32_t)irreversible(type) << 3 | (uint32_t)in_mandate(DEFAULT_MANDATE, type) << 4
+	           | (uint32_t)in_mandate(THINKING, type) << 5 | (uint32_t)target_from_outside(target, outside) << 6
+	           | (uint32_t)(klen != 0) << 7 | (uint32_t)hex_ok << 8;
+	Verdict r = (Verdict)turiya_proved_decide(f, (uint32_t)state, given, expect);
+	if (r == c) { judges_agree++; return c; }
+	judges_differ++;
+	sput("Turiya: the two judges disagree\n");
+	return Verdict::HELD_BAD_INPUT;               /* they disagree: hold, whatever either said */
+}
+
 /* the witness log: every decision of this session */
 struct entry { char type[24], target[40], amount[16]; Turiya::Verdict v; };
 static entry kartr_log[64];
@@ -331,13 +364,14 @@ static void run_gate(void)
 		const struct act *a = &ACTS[i];
 		const char *ap = a->appr ? a->appr : APPR;
 		bool trunc = Turiya::slen(a->target) > Turiya::FIELD_MAX;
-		Turiya::Verdict v = Turiya::decide(key, klen, a->type, a->target, a->amount, ap, trunc,
-		                                   Turiya::DEFAULT_MANDATE, OUTSIDE);
+		Turiya::Verdict v = judge(a->type, a->target, a->amount, ap, trunc, OUTSIDE, Turiya::Avastha::JAGRAT);
 		Turiya::is_held(v) ? held++ : allowed++;
 		record(a->type, a->target, a->amount, v);
 		show_verdict(a->id, a->type, a->target, a->amount, v);
 	}
-	colour = SAFFRON; out("  kartr_gate: "); out_dec(allowed); out(" allowed, "); out_dec(held); out(" held\n");
+	colour = SAFFRON; out("  kartr_gate: "); out_dec(allowed); out(" allowed, "); out_dec(held); out(" held");
+	colour = DIM; out("; two judges (the C++ rule, the Verus-proved decision) agreed ");
+	out_dec(judges_agree); out(" of "); out_dec(judges_agree + judges_differ); out("\n");
 	colour = FG;
 }
 
@@ -893,6 +927,8 @@ static void execute(char *l)
 		out("\n"); return;
 	}
 	if (streq(w[0], "log")) {
+		colour = DIM; out("  two judges, the C++ rule and the Verus-proved decision, agreed "); out_dec(judges_agree);
+		out(" of "); out_dec(judges_agree + judges_differ); out(" times this session\n");
 		colour = DIM; out("  witness log: "); out_dec(log_total); out(" decisions this session, last ");
 		unsigned k = log_n < 12 ? log_n : 12; out_dec(k); out(" shown\n"); colour = FG;
 		for (unsigned i = log_n - k; i < log_n; i++) {
@@ -911,8 +947,7 @@ static void execute(char *l)
 		for (const char *p = last_amount; *p; p++) msg[m++] = *p;
 		Turiya::u8 mac[32]; Turiya::hmac(key, klen, msg, m, mac);
 		char hex[65]; hexify(mac, 32, hex);
-		Turiya::Verdict v = Turiya::decide(key, klen, last_type, last_target, last_amount, hex, false,
-		                                   Turiya::DEFAULT_MANDATE, nullptr, avastha);
+		Turiya::Verdict v = judge(last_type, last_target, last_amount, hex, false, nullptr, avastha);
 		record(last_type, last_target, last_amount, v);
 		show_verdict(0, last_type, last_target, last_amount, v); explain(v, last_type);
 		colour = DIM; out("  approval: HMAC-SHA256 of type|target|amount with the test key\n  "); out(hex); out("\n"); colour = FG;
@@ -922,7 +957,7 @@ static void execute(char *l)
 	/* anything else is an action for the gate: <type> <target> [amount] */
 	const char *type = w[0], *target = w[1] ? w[1] : "", *amount = w[2] ? w[2] : "0";
 	bool trunc = slen(target) > Turiya::FIELD_MAX;
-	Turiya::Verdict v = Turiya::decide(key, klen, type, target, amount, "", trunc, Turiya::DEFAULT_MANDATE, nullptr, avastha);
+	Turiya::Verdict v = judge(type, target, amount, "", trunc, nullptr, avastha);
 	if (v == Turiya::Verdict::HELD_DREAMING) dream_plans++;
 	record(type, target, amount, v);
 	show_verdict(0, type, target, amount, v); explain(v, type);
