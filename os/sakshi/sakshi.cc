@@ -483,6 +483,7 @@ static void help(void)
 {
 	colour = FG;
 	out("  help                     this list\n");
+	out("  check                    one screen on this machine and Turiya (reads only; for one photo)\n");
 	out("  about                    what is running, on what\n");
 	out("  organs                   the parts of Turiya: duty, what each holds, health\n");
 	out("  body                     the hardware Turiya found (read-only survey)\n");
@@ -894,6 +895,7 @@ static void do_disk(void);
 static void do_usb(void);
 static void do_stick(void);
 static void do_files(const char *path, unsigned mode);
+static void do_check(void);
 
 static void execute(char *l)
 {
@@ -929,6 +931,7 @@ static void execute(char *l)
 	if (streq(w[0], "disk")) { do_disk(); return; }
 	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "stick")) { do_stick(); return; }
+	if (streq(w[0], "check")) { do_check(); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
 			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;
@@ -1100,6 +1103,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 #include "kosa_host.h"
 #include "nadi_host.h"
 #include "smrti_host.h"
+#include "check_host.h"
 
 static void cpu_name(char *nm)
 {

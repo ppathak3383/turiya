@@ -1,0 +1,17 @@
+turiya> Turiya: ready
+check
+  check (reads only; the internal SSD is not touched)
+  Turiya     heart 3 beats, breath 7; Tvak awake (by interrupt); judges agreed 15/15
+  processor  Intel Core Processor (Skylake), 999 MiB, 2048x2048
+  PCI        8 functions: display 00:02.0 QEMU; USB3 00:03.0 QEMU;
+              USB3 00:04.0 QEMU; NVMe 00:05.0 QEMU;
+  ACPI       XSDT, 5 tables; power-off ready (PM1a 0xb004, type 0)
+  USB Nadi   8 ports, 0 scratchpads; nothing plugged in
+  USB Nadi2  8 ports, 0 scratchpads; port 1 storage;
+  Smrti reads the files (FAT32 or exFAT; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, top folder: 3 entries
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+  Take one photo of this screen. 'disk' (the internal SSD) waits for your yes.
+turiya> 
