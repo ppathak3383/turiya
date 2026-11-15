@@ -27,6 +27,8 @@
 #include "kosa_window.h"
 #include "nadi_seed.h"
 #include "nadi_window.h"
+#include "smrti_seed.h"
+#include "smrti_window.h"
 
 typedef unsigned long uptr;
 typedef unsigned int  u32b;
@@ -487,6 +489,7 @@ static void help(void)
 	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
 	out("  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)\n");
 	out("  stick                    read a USB stick's partition table (only read commands exist)\n");
+	out("  files                    the files in the top folder of a USB stick (FAT32, read by Smrti)\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");
 	out("  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000\n");
@@ -556,8 +559,8 @@ static void hexify(const Turiya::u8 *b, unsigned n, char *hx)
 
 /* ---- organs: compartments with one duty (svadharma), fixed limits (maryada) and recovery (cikitsa) ---- */
 enum : seL4_Word { ORG_FAULT = 0x1000, ORG_MSG = 0x2000 };          /* endpoint badges: kind | organ id */
-enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3, L_PLUG = 5, L_UNPLUG = 6 }; /* what an organ may say */
-enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_STOP = 0x40, N_FALL = 0x80 }; /* bits on an organ's notification */
+enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3, L_PLUG = 5, L_UNPLUG = 6, L_NEED = 7 }; /* what an organ may say */
+enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_GIVE = 8, N_STOP = 0x40, N_FALL = 0x80 }; /* bits on an organ's notification */
 enum : uptr { ORG_TLS = 0x5000000, ORG_IPC = 0x6000000, ORG_SCRATCH = 0x10000000 };
 
 struct elf_ehdr { unsigned char ident[16]; uint16_t type, machine; uint32_t version; uint64_t entry, phoff, shoff;
@@ -570,7 +573,7 @@ struct organ
 {
 	const char *name; seL4_Word id;
 	const unsigned char *seed; unsigned long seed_len; const char *seed_sha;
-	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req, stop;
+	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req, stop, give;
 	organ_page pages[32]; unsigned npages, ncode;
 	uptr entry, scratch;
 	unsigned long gen, falls, heals, irqs, last_heal_us, typed;
@@ -588,10 +591,11 @@ static organ nadi2 { "Nadi2", 5, NADI_SEED, NADI_LEN, NADI_SHA256 };   /* the se
 static organ *const NADIS[2] = { &nadi, &nadi2 };
 static NadiWindow *nwins[2];              /* Sakshi's views of each Nadi's window (set when made) */
 static int nadi_index(const organ &o) { return &o == &nadi ? 0 : &o == &nadi2 ? 1 : -1; }
+static organ smrti { "Smrti", 6, SMRTI_SEED, SMRTI_LEN, SMRTI_SHA256 };
 static organ *organ_by_id(seL4_Word id)
 {
 	return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : id == nadi.id ? &nadi
-	     : id == nadi2.id ? &nadi2 : nullptr;
+	     : id == nadi2.id ? &nadi2 : id == smrti.id ? &smrti : nullptr;
 }
 static uint64_t tsc_hz;                /* processor clock: from the kernel, else measured against the heart */
 static bool tsc_known;
@@ -670,8 +674,8 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 
 	/* capabilities: slot 1 faults, 2 channel out, 3 its notification, then only what its duty needs
 	 * (4 its IRQ, 5 its ports). Nothing else. */
-	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot(); o.req = alloc_slot(); o.stop = alloc_slot();
-	if (!o.stop) return fail(o, "slots", 7);
+	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot(); o.req = alloc_slot(); o.stop = alloc_slot(); o.give = alloc_slot();
+	if (!o.give) return fail(o, "slots", 7);
 	if ((r = seL4_CNode_Mint(o.cnode, 1, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
 	                         seL4_CapRights_new(1, 0, 0, 1), ORG_FAULT | o.id)))          return fail(o, "fault channel", r);
 	if ((r = seL4_CNode_Mint(o.cnode, 2, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
@@ -694,6 +698,8 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 	                         seL4_CanWrite, N_REQ)))                                     return fail(o, "request", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.stop, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_STOP)))                                    return fail(o, "stop", r);
+	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.give, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
+	                         seL4_CanWrite, N_GIVE)))                                    return fail(o, "give", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.pulse, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_PULSE)))                                   return fail(o, "pulse", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.fall, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
@@ -750,7 +756,7 @@ static void organ_rest(organ &o, const char *why)
 	colour = SAFFRON; out("  "); out(o.name); out(" rests: "); out(why); out(".\n");
 	colour = DIM;
 	if (&o == &tvak) { out("  Sakshi feels the keyboard itself (reflex) until you type 'heal tvak'.\n"); reflex_on(); }
-	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : o.id == 3 ? "hrdaya" : o.id == 4 ? "nadi" : o.id == 5 ? "nadi2" : "?"); out("'.\n"); }
+	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : o.id == 3 ? "hrdaya" : o.id == 4 ? "nadi" : o.id == 5 ? "nadi2" : o.id == 6 ? "smrti" : "?"); out("'.\n"); }
 	colour = FG;
 	hold_prompt = false; interject_end(); status_bar();
 }
@@ -843,6 +849,12 @@ static void show_organs(void)
 		out("           "); out(n.resting ? "resting" : (n.awake ? "awake" : "healing")); out(", generation "); out_dec(n.gen);
 		out("; fell "); out_dec(n.falls); out(", healed "); out_dec(n.heals); out("; keys typed "); out_dec(n.typed); out("\n");
 	}
+	colour = SAFFRON; out("  Smrti    "); colour = FG; out("memory: reads a FAT32 file system; it touches no device, Sakshi fetches blocks\n");
+	colour = DIM;
+	if (!smrti.made) out("           made only when you type 'files'\n");
+	else { out("           holds 3 capabilities, a read-only view of the stick's data page, 1 window\n");
+	       out("           "); out(smrti.resting ? "resting" : (smrti.awake ? "awake" : "healing")); out(", generation "); out_dec(smrti.gen);
+	       out("; fell "); out_dec(smrti.falls); out(", healed "); out_dec(smrti.heals); out("\n"); }
 	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart: the PIT timer at 50 Hz, one signal to Sakshi per tick\n");
 	colour = DIM;
 	if (!hrdaya.made) { out("           not made ("); out(hrdaya.step ? hrdaya.step : "?"); out("); Sakshi keeps the timer itself\n"); }
@@ -880,6 +892,7 @@ static void clear_screen(void)
 static void do_disk(void);
 static void do_usb(void);
 static void do_stick(void);
+static void do_files(void);
 
 static void execute(char *l)
 {
@@ -902,6 +915,7 @@ static void execute(char *l)
 	if (streq(w[0], "disk")) { do_disk(); return; }
 	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "stick")) { do_stick(); return; }
+	if (streq(w[0], "files")) { do_files(); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
 			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;
@@ -918,7 +932,7 @@ static void execute(char *l)
 	}
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
 	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
-		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi : streq(w[1], "nadi2") ? &nadi2
+		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi : streq(w[1], "nadi2") ? &nadi2 : streq(w[1], "smrti") ? &smrti
 		         : (streq(w[1], "hrdaya") || streq(w[1], "heart")) ? &hrdaya : nullptr;
 		if (t && w[0][0] == 's') {
 			if (!t->made || !t->awake) { colour = DIM; out("  "); out(t->name); out(" is not awake.\n"); colour = FG; return; }
@@ -926,7 +940,7 @@ static void execute(char *l)
 			hold_prompt = true; hold_since = beats; seL4_Signal(t->stop); return;
 		}
 		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
-		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi, nadi2). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
+		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi, nadi2, smrti). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
 	}
 	if (streq(w[0], "mail")) {
@@ -1072,6 +1086,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 
 #include "kosa_host.h"
 #include "nadi_host.h"
+#include "smrti_host.h"
 
 static void cpu_name(char *nm)
 {

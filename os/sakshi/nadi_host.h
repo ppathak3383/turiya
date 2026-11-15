@@ -5,6 +5,7 @@
  */
 
 static const uint8_t *ndatas[2];       /* Sakshi's read-only views of each Nadi's data page */
+static seL4_CPtr ndata_caps[2];        /* and the pages themselves, to lend to Smrti */
 static pci_fn xhci_fns[2];
 static unsigned nxhci;
 static bool xhci_scanned;
@@ -65,7 +66,7 @@ static bool make_nadi(int k)
 		if (i == NADI_DATA) {
 			if (map_in(seL4_CapInitThreadVSpace, f, view + 4096, seL4_CanRead, seL4_X86_Default_VMAttributes))
 				return nadi_fail(k, "data view");
-			ndatas[k] = (const uint8_t *)(view + 4096);
+			ndatas[k] = (const uint8_t *)(view + 4096); ndata_caps[k] = f;
 		}
 	}
 	w->bar_va = NADI_REGS_VA; w->tsc_hz = tsc_hz; w->reg_bytes = pages * 4096u;

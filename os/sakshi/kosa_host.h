@@ -70,6 +70,29 @@ static void drain_stash(void)
 	}
 }
 
+/* wait for one of some messages (a bit mask of labels) from one organ, at most max_beats seconds; everything
+ * else is still served. Returns the label, or 0 if the organ fell or the time ran out. */
+static seL4_Word wait_any(organ &o, seL4_Word labels, unsigned long max_beats, seL4_Word *a, seL4_Word *b)
+{
+	unsigned long until = beats + max_beats;
+	for (;;) {
+		seL4_Word badge = 0;
+		seL4_MessageInfo_t info = seL4_Recv(ep, &badge);
+		if (badge & (ORG_FAULT | ORG_MSG)) {
+			organ *x = organ_by_id(badge & 0xfff);
+			if (!x) continue;
+			if (badge & ORG_FAULT) { organ_fell(*x, info); if (x == &o) return 0; continue; }
+			seL4_Word l = seL4_MessageInfo_get_label(info);
+			if (x == &o && l < 64 && (labels & (1UL << l))) { if (a) *a = seL4_GetMR(0); if (b) *b = seL4_GetMR(1); return l; }
+			if (l == L_KEY) { if (stash_n < sizeof stash) stash[stash_n++] = (char)seL4_GetMR(0); continue; }
+			organ_spoke(*x, info);
+			continue;
+		}
+		if (badge & N_BREATH) breath();
+		if (badge & N_HEART) { heart_tick(); if (beats >= until) return 0; }
+	}
+}
+
 /* wait for one message from one organ, at most max_beats seconds; everything else is still served */
 static bool wait_for(organ &o, seL4_Word label, unsigned long max_beats, seL4_Word *a, seL4_Word *b)
 {
@@ -180,7 +203,8 @@ static void out_size(uint64_t bytes)
 {
 	if (bytes >= 1000000000ULL) { out_dec(bytes / 1000000000ULL); out("."); out_dec((bytes / 100000000ULL) % 10); out(" GB"); }
 	else if (bytes >= 1000000ULL) { out_dec(bytes / 1000000ULL); out(" MB"); }
-	else { out_dec(bytes / 1000ULL); out(" KB"); }
+	else if (bytes >= 1000ULL) { out_dec(bytes / 1000ULL); out(" KB"); }
+	else { out_dec(bytes); out(bytes == 1 ? " byte" : " bytes"); }
 }
 
 static const char *gpt_type(const uint8_t *g)

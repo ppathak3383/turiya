@@ -24,6 +24,10 @@ g++ $FL $INC $LD -o nadi nadi.cc
 strip -s -o nadi.seed nadi
 python3 mkseed.py nadi.seed NADI ../sakshi/nadi_seed.h
 
+g++ $FL $INC $LD -o smrti smrti.cc
+strip -s -o smrti.seed smrti
+python3 mkseed.py smrti.seed SMRTI ../sakshi/smrti_seed.h
+
 # the Verus-proved gate decision: proof annotations stripped, built as a no_std library
 cd ../gate-rs
 python3 strip_verus.py gate.rs > gate_exec.rs

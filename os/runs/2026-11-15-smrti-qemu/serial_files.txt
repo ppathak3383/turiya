@@ -1,0 +1,8 @@
+turiya> Turiya: ready
+files
+  Smrti reads the files (FAT32; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, 3 entries in the top folder
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+turiya> 
