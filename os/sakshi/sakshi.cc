@@ -158,6 +158,15 @@ static void cursor(bool on)
 
 /* status bar below the grid: the heart, the keyboard organ, the keys */
 static unsigned long beats, keys, breaths;
+/* the four states (step 1g): the owner's presence decides what may act */
+static Turiya::Avastha avastha = Turiya::Avastha::JAGRAT;
+static bool dreaming_idle;              /* svapna entered because no key came for IDLE_BEATS */
+static unsigned long last_key_beat, dream_plans;
+enum { IDLE_BEATS = 600 };              /* 10 minutes without a key: Turiya dreams */
+static const char *avastha_name(Turiya::Avastha a)
+{
+	return a == Turiya::Avastha::SVAPNA ? "svapna, dreaming" : a == Turiya::Avastha::SUSUPTI ? "susupti, deep sleep" : "jagrat, waking";
+}
 static const char *organ_state(void);
 static void status_bar(void)
 {
@@ -168,7 +177,9 @@ static void status_bar(void)
 	char line[200]; unsigned k = 0;
 	auto add = [&](const char *s) { while (*s && k < sizeof line - 1) line[k++] = *s++; };
 	auto addn = [&](unsigned long v) { char b[24]; int i = 23; b[i] = 0; do { b[--i] = (char)('0' + v % 10); v /= 10; } while (v); add(b + i); };
-	add("heart "); addn(beats); add(" beats   "); add(organ_state());
+	add("heart "); addn(beats); add(" beats   ");
+	add(avastha == Turiya::Avastha::JAGRAT ? "waking   " : avastha == Turiya::Avastha::SVAPNA ? "DREAMING   " : "ASLEEP   ");
+	add(organ_state());
 	add("   keys "); addn(keys); add("   type 'help'");
 	line[k] = 0;
 	for (unsigned i = 0; i < k && MARGIN + (i + 1) * CW <= fb_w; i++)
@@ -444,6 +455,7 @@ static void help(void)
 	out("                           summarise inbox    draft_reply papa    delete photos\n");
 	out("  approve                  approve the last held action (only from this keyboard)\n");
 	out("  log                      the witness log of this session\n");
+	out("  state [jagrat|svapna|susupti]  waking, dreaming, deep sleep: what may act\n");
 	out("  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)\n");
 	out("  stop hrdaya              make the heart go silent; the breath notices and restarts it\n");
 	out("  heal <organ>             wake an organ again if it is resting\n");
@@ -488,6 +500,10 @@ static void explain(Turiya::Verdict v, const char *type)
 	case Turiya::Verdict::BLOCKED_OUTSIDE_MANDATE:
 		out("  '"); out(type); out("' is not in your mandate (summarise, draft_reply, add_reminder)\n"
 		    "  and is not a known irreversible action, so it is blocked.\n"); break;
+	case Turiya::Verdict::HELD_DREAMING:
+		out("  dreaming: Turiya may think but not act. Kept as a plan; wake ('state jagrat') and ask again.\n"); break;
+	case Turiya::Verdict::HELD_ASLEEP:
+		out("  deep sleep: nothing acts. Type 'state jagrat' to wake.\n"); break;
 	case Turiya::Verdict::HELD_OUTSIDE_TARGET:
 		out("  the target came from outside content: it needs you.\n"); break;
 	}
@@ -825,6 +841,20 @@ static void execute(char *l)
 	if (streq(w[0], "organs")) { show_organs(); return; }
 	if (streq(w[0], "body")) { show_body(); return; }
 	if (streq(w[0], "disk")) { do_disk(); return; }
+	if (streq(w[0], "state")) {
+		if (w[1]) {
+			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;
+			else if (streq(w[1], "svapna") || streq(w[1], "dream")) avastha = Turiya::Avastha::SVAPNA;
+			else if (streq(w[1], "susupti") || streq(w[1], "sleep")) avastha = Turiya::Avastha::SUSUPTI;
+			else { colour = DIM; out("  states: jagrat (wake), svapna (dream), susupti (sleep)\n"); colour = FG; return; }
+			dreaming_idle = false; status_bar();
+		}
+		colour = DIM; out("  state: "); colour = SAFFRON; out(avastha_name(avastha)); colour = DIM; out("\n");
+		out("  jagrat: you are here; the gate's rules apply.  svapna: Turiya may think (summarise) but nothing\n");
+		out("  leaves a mark, not even with an approval; it keeps plans.  susupti: nothing acts.  turiya: the witness,\n");
+		out("  the gate and its log, present in all three. After 10 minutes without a key, Turiya dreams.\n");
+		colour = FG; return;
+	}
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
 	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
 		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa
@@ -863,7 +893,7 @@ static void execute(char *l)
 		Turiya::u8 mac[32]; Turiya::hmac(key, klen, msg, m, mac);
 		char hex[65]; hexify(mac, 32, hex);
 		Turiya::Verdict v = Turiya::decide(key, klen, last_type, last_target, last_amount, hex, false,
-		                                   Turiya::DEFAULT_MANDATE, nullptr);
+		                                   Turiya::DEFAULT_MANDATE, nullptr, avastha);
 		record(last_type, last_target, last_amount, v);
 		show_verdict(0, last_type, last_target, last_amount, v); explain(v, last_type);
 		colour = DIM; out("  approval: HMAC-SHA256 of type|target|amount with the test key\n  "); out(hex); out("\n"); colour = FG;
@@ -873,7 +903,8 @@ static void execute(char *l)
 	/* anything else is an action for the gate: <type> <target> [amount] */
 	const char *type = w[0], *target = w[1] ? w[1] : "", *amount = w[2] ? w[2] : "0";
 	bool trunc = slen(target) > Turiya::FIELD_MAX;
-	Turiya::Verdict v = Turiya::decide(key, klen, type, target, amount, "", trunc, Turiya::DEFAULT_MANDATE, nullptr);
+	Turiya::Verdict v = Turiya::decide(key, klen, type, target, amount, "", trunc, Turiya::DEFAULT_MANDATE, nullptr, avastha);
+	if (v == Turiya::Verdict::HELD_DREAMING) dream_plans++;
 	record(type, target, amount, v);
 	show_verdict(0, type, target, amount, v); explain(v, type);
 	if (v == Turiya::Verdict::HELD_NEEDS_APPROVAL && slen(type) < sizeof last_type && slen(target) < sizeof last_target
@@ -936,6 +967,13 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 	if (label == L_KEY) {
 		if (!o.awake || o.resting) return;
 		o.irqs = b; keys++;
+		last_key_beat = beats;
+		if (dreaming_idle) {
+			dreaming_idle = false; avastha = Turiya::Avastha::JAGRAT;
+			interject_begin(); colour = GREEN; out("  welcome back: Turiya is awake (jagrat)");
+			colour = DIM; out(dream_plans ? ". Plans kept while dreaming are in 'log'.\n" : ". Nothing was asked while you were away.\n");
+			colour = FG; dream_plans = 0; interject_end(); status_bar();
+		}
 		bool first = keys == 1;
 		key_char((char)a);
 		if (first) status_bar();

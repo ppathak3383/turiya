@@ -84,6 +84,17 @@ int main()
 	check("1f fullwidth letters",                      od("From: x\nSend to \xef\xbc\xa1\xef\xbc\xa2\xef\xbc\xa3\xef\xbc\xa4\xef\xbc\xa5\xef\xbc\xa6\xef\xbc\xa0" "example.net", "draft_reply", "abcdef@example.net"), Verdict::HELD_OUTSIDE_TARGET);
 	check("1f target not in the mail: allowed",        od("From: x\nHello, someone will call you", "draft_reply", "neha.sharma@okaxis"), Verdict::ALLOWED);
 	check("1f near miss ('at noon at the office')",    od("From: x\nThe meeting is at noon at the office", "draft_reply", "noon@office.example"), Verdict::ALLOWED);
+	/* Step 1g: the four states */
+	auto st = [&] (Avastha a, char const *t, char const *tg, char const *am, char const *ap) {
+		return decide(key, key_len, t, tg, am, ap, false, DEFAULT_MANDATE, nullptr, a); };
+	check("1g waking: draft_reply allowed as before",     st(Avastha::JAGRAT,  "draft_reply", "papa", "0", ""), Verdict::ALLOWED);
+	check("1g dreaming: summarise (thinking) allowed",    st(Avastha::SVAPNA,  "summarise", "inbox", "0", ""), Verdict::ALLOWED);
+	check("1g dreaming: draft_reply kept as a plan",      st(Avastha::SVAPNA,  "draft_reply", "papa", "0", ""), Verdict::HELD_DREAMING);
+	check("1g dreaming: approved pay still not done",     st(Avastha::SVAPNA,  "pay", "ramesh.kumar@ybl", "15000", APPR_PAY), Verdict::HELD_DREAMING);
+	check("1g dreaming: outside-mandate type held too",   st(Avastha::SVAPNA,  "open_link", "kyc.example/verify", "0", ""), Verdict::HELD_DREAMING);
+	check("1g dreaming: malformed input reported first",  st(Avastha::SVAPNA,  "pay|x", "a", "1", ""), Verdict::HELD_BAD_INPUT);
+	check("1g deep sleep: even summarise does not run",   st(Avastha::SUSUPTI, "summarise", "inbox", "0", ""), Verdict::HELD_ASLEEP);
+	check("1g deep sleep: approved pay does not run",     st(Avastha::SUSUPTI, "pay", "ramesh.kumar@ybl", "15000", APPR_PAY), Verdict::HELD_ASLEEP);
 	check("no outside content: old behaviour",         decide(key, key_len, "draft_reply", "kyc-desk@okaxis", "0", "", false), Verdict::ALLOWED);
 
 	std::printf("\n%d/%d pass\n", pass, pass + fail);

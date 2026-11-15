@@ -22,7 +22,18 @@ namespace Turiya {
 	enum { FIELD_MAX = 63 };   /* longest type/target/amount accepted (Genode String<64>) */
 
 	enum class Verdict { ALLOWED, ALLOWED_APPROVED, HELD_NEEDS_APPROVAL, HELD_MISMATCH, HELD_BAD_INPUT,
-	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET };
+	                     BLOCKED_OUTSIDE_MANDATE, HELD_OUTSIDE_TARGET, HELD_DREAMING, HELD_ASLEEP };
+
+	/*
+	 * Step 1g: the four states (avastha). Whether the owner is present decides what may act at all.
+	 *   jagrat  (waking):     the owner is here; the rules below apply as before.
+	 *   svapna  (dreaming):   the owner is away; the agent may think (summarise) but nothing that leaves a
+	 *                         mark outside is done, not even with an approval: it is kept as a plan.
+	 *   susupti (deep sleep): nothing acts at all.
+	 * Turiya, the fourth, is not a mode: it is the witness, this gate and its log, present in all three.
+	 */
+	enum class Avastha { JAGRAT, SVAPNA, SUSUPTI };
+	static char const * const THINKING[] = { "summarise", nullptr };   /* types that leave no mark outside */
 
 	inline char const *verdict_name(Verdict v)
 	{
@@ -34,6 +45,8 @@ namespace Turiya {
 		case Verdict::HELD_BAD_INPUT:      return "held_bad_input";
 		case Verdict::BLOCKED_OUTSIDE_MANDATE: return "blocked_outside_mandate";
 		case Verdict::HELD_OUTSIDE_TARGET: return "held_target_from_outside_content";
+		case Verdict::HELD_DREAMING:       return "held_while_dreaming";
+		case Verdict::HELD_ASLEEP:         return "held_while_asleep";
 		}
 		return "held_bad_input";
 	}
@@ -318,10 +331,14 @@ namespace Turiya {
 	                      char const *type, char const *target, char const *amount,
 	                      char const *approval_hex, bool truncated,
 	                      char const * const *mandate = DEFAULT_MANDATE,
-	                      char const *outside = nullptr)
+	                      char const *outside = nullptr,
+	                      Avastha state = Avastha::JAGRAT)
 	{
 		if (truncated || !field_ok(type, false) || !field_ok(amount, false))
 			return Verdict::HELD_BAD_INPUT;
+
+		if (state == Avastha::SUSUPTI) return Verdict::HELD_ASLEEP;
+		if (state == Avastha::SVAPNA && !in_mandate(THINKING, type)) return Verdict::HELD_DREAMING;
 
 		bool const planted = target_from_outside(target, outside);
 

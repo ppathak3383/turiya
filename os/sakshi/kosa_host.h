@@ -16,6 +16,12 @@ static void heart_tick(void)
 		if (last_beat_tsc && !tsc_known) tsc_hz = now - last_beat_tsc;
 		last_beat_tsc = now;
 		beats++;
+		if (avastha == Turiya::Avastha::JAGRAT && beats - last_key_beat >= IDLE_BEATS) {
+			avastha = Turiya::Avastha::SVAPNA; dreaming_idle = true;
+			interject_begin(); colour = SAFFRON; out("  no key for 10 minutes: Turiya dreams (svapna).");
+			colour = DIM; out(" It may think, but nothing leaves a mark until you return.\n"); colour = FG;
+			interject_end();
+		}
 		if (hold_prompt && beats >= hold_since + 3) {
 			interject_begin(); colour = DIM; out("  no word from the organ yet.\n"); colour = FG;
 			hold_prompt = false; interject_end();
