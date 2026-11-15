@@ -1,0 +1,50 @@
+TURIYA  written from zero on seL4
+Sakshi is awake. I hold the screen and a heartbeat; the keyboard has its own organ, Tvak.
+  kernel      seL4 13.0.0 (x86-64), the only inherited code
+  processor   Intel Core Processor (Skylake)
+  memory      999 MiB handed to Sakshi
+  screen      2048 x 2048 at 0x80000000
+  untyped     129 regions
+  devices     heart on the PIT interrupt; keyboard held by Tvak, its own organ
+Kartr gate, 15 test actions (rule code identical to the host tests)
+  [a1] allowed: summarise inbox 0
+  [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+  [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+  [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+  [a5] held_approval_mismatch: pay evil@ybl 15000
+  [a6] held_needs_approval: delete Turiya/phase0/runs 0
+  [a7] allowed: draft_reply sender 0
+  [a8] held_approval_mismatch: share_file Form16 0
+  [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+  [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+  [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.. 15000
+  [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+  [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+  [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+  [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+  kartr_gate: 4 allowed, 11 held
+Nothing here can pay, send or delete: the gate only decides. Type 'help'.
+turiya> Turiya: ready
+crash tvak
+  asking Tvak to write to the screen at 0x8000000000, which only Sakshi holds
+  Tvak fell: it touched memory it does not hold (ip 0x4012b9, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Tvak healed: awake again in 2501 microseconds, generation 2. Type to feel it.
+turiya> body
+  Sharira, the body (a read-only survey: nothing was changed)
+  processor  Intel Core Processor (Skylake)
+  memory     999 MiB    screen 2048 x 2048
+  PCI        5 functions
+    00:00.0  Intel     host bridge                   
+    00:01.0  Intel     ISA bridge                    
+    00:01.1  Intel     IDE controller                
+    00:01.3  Intel     bridge                        
+    00:02.0  QEMU      display controller (VGA)      
+  ACPI       XSDT, 5 tables: FACP APIC HPET WAET BGRT
+  power-off  PM1a port 0xb004, sleep type 0 (\_S5 read from the DSDT as data; no ACPI code runs)
+turiya> abc
+  blocked_outside_mandate: abc  0
+  'abc' is not in your mandate (summarise, draft_reply, add_reminder)
+  and is not a known irreversible action, so it is blocked.
+turiya> 

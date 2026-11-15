@@ -1,13 +1,17 @@
 # Turiya OS: written from zero on seL4
 
-Only one inherited piece: the seL4 microkernel (`kernel/`). Everything else here is Turiya's own code.
+Only one inherited piece: the seL4 microkernel (`kernel/`, two small boot-code patches). Everything else here is
+Turiya's own code.
 
-- `sakshi/`: the first program (root task). Own start code, TLS and IPC buffer set-up, maps the UEFI screen
-  from device memory, own font renderer, runs the Kartr gate rule (`kartr_rule.h`, same code as the 36 host
-  tests in `phase1/goa/kartr_gate/tests/`). No C library, no runtime, ~27 KB.
-- `stick/`: builds a UEFI USB image (GPT + EFI partition). GRUB is the temporary loader; it is replaced by
-  Turiya's own start-up code in the next step. The 16 MB `pad` module works around seL4's check that
-  boot modules end above the kernel; our own loader will place modules properly.
+| Part | Name | What it is |
+|---|---|---|
+| `usas/` | Uṣas (dawn) | UEFI start-up in Rust, no crates: takes the firmware's screen and memory map, loads seL4 and Sākṣī, leaves the firmware behind |
+| `sakshi/` | Sākṣī (witness) | the root task: screen, heart (50 Hz timer), the Kartr gate (`kartr_rule.h`, same code as the 36 host tests), makes and heals the organs |
+| `sakshi/sharira.h` | Śarīra (body) | read-only hardware survey (PCI, ACPI tables) and power-off |
+| `organs/tvak.cc` | Tvak (touch) | the keyboard, in its own compartment with 5 capabilities; re-made from its SHA-256-checked seed if it faults |
+| `organs/kbd_i8042.h` | | keyboard tissue shared by Tvak and Sākṣī's reflex |
+| `stick/` | | builds the UEFI USB image |
 
-First light (15 Nov 2026), emulator with UEFI firmware (OVMF): seL4 starts, Sakshi draws its log on screen,
-gate 15/15 as expected, "4 allowed, 11 held".
+Build: `organs/build.sh` (Tvak, its seed, then Sākṣī), then `stick/build_usas.sh` (Uṣas and the image).
+
+Runs: `runs/` (first light on the HP, Uṣas on the HP, Tvak in the emulator).
