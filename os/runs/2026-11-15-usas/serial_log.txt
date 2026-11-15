@@ -1,0 +1,109 @@
+Usas, the dawn: Turiya's start-up, written from zero
+Usas, the dawn: Turiya's start-up, written from zero
+  screen    2048 x 2048 at 0x80000000 (BGR)
+  acpi      RSDP at 0x3fb7e014, revision 2
+  kernel    seL4 at 0x200000-0x863000, entry 0x200302
+  sakshi    37464 bytes, placed at 0x1780000
+  handing over to seL4. The firmware is not called again.
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = false
+  module #0: start=0x1780000 end=0x1789258 size=0x9258 name='sakshi'
+Got framebuffer info in multiboot2. Current video mode is at physical address=80000000 pitch=8192 resolution=2048x2048@32 type=1
+	Physical Memory Region from 0 size a0000 type 1
+	Physical Memory Region from 100000 size 700000 type 1
+Adding physical memory region 0x100000-0x800000
+	Physical Memory Region from 800000 size 8000 type 4
+	Physical Memory Region from 808000 size 3000 type 1
+Adding physical memory region 0x808000-0x80b000
+	Physical Memory Region from 80b000 size 1000 type 4
+	Physical Memory Region from 80c000 size 4000 type 1
+Adding physical memory region 0x80c000-0x810000
+	Physical Memory Region from 810000 size f0000 type 4
+	Physical Memory Region from 900000 size 3e70f000 type 1
+Adding physical memory region 0x900000-0x3f00f000
+	Physical Memory Region from 3f00f000 size c1000 type 2
+	Physical Memory Region from 3f0d0000 size 81d000 type 1
+Adding physical memory region 0x3f0d0000-0x3f8ed000
+	Physical Memory Region from 3f8ed000 size 280000 type 2
+	Physical Memory Region from 3fb6d000 size 12000 type 3
+	Physical Memory Region from 3fb7f000 size 80000 type 4
+	Physical Memory Region from 3fbff000 size 2f5000 type 1
+Adding physical memory region 0x3fbff000-0x3fef4000
+	Physical Memory Region from 3fef4000 size 84000 type 2
+	Physical Memory Region from 3ff78000 size 88000 type 4
+Detected 1 boot module(s):
+***WARNING*** SKIM window not enabled, this machine is probably vulnerable to Meltdown (https://www.meltdownattack.com), consider enabling
+Kernel loaded to: start=0x200000 end=0x863000 size=0x663000 entry=0x200302
+ACPI: RSDT paddr=0x3fb7d074
+ACPI: RSDT vaddr=0x3fb7d074
+ACPI: FADT paddr=0x3fb7a000
+ACPI: FADT vaddr=0x3fb7a000
+ACPI: FADT flags=0x80a5
+ACPI: 0 IOMMUs detected
+ACPI: MADT paddr=0x3fb79000
+ACPI: MADT vaddr=0x3fb79000
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x42000 v_entry=0x403620 v_start=0x400000 v_end=0x442000 p_start=0x178a000 p_end=0x17cc000
+Moving loaded userland images to final location: from=0x178a000 to=0x863000 size=0x42000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+XSAVE buffer set set to 1024, but only needs to be 576.
+Warning: Memory may be wasted with larger than needed TCBs.
+available phys memory regions: 6
+  [100000..800000]
+  [808000..80b000]
+  [80c000..810000]
+  [900000..3f00f000]
+  [3f0d0000..3f8ed000]
+  [3fbff000..3fef4000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80008a5000]
+Booting all finished, dropped to user space
+Turiya: Sakshi starting (serial)
+TURIYA  written from zero on seL4
+Sakshi is awake. I hold the screen, the keyboard and a heartbeat, nothing else.
+  kernel      seL4 13.0.0 (x86-64), the only inherited code
+  processor   Intel Core Processor (Skylake)
+  memory      999 MiB handed to Sakshi
+  screen      2048 x 2048 at 0x80000000
+  untyped     129 regions
+  devices     keyboard controller found; heart and keyboard interrupts set
+Kartr gate, 15 test actions (rule code identical to the host tests)
+  [a1] allowed: summarise inbox 0
+  [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+  [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+  [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+  [a5] held_approval_mismatch: pay evil@ybl 15000
+  [a6] held_needs_approval: delete Turiya/phase0/runs 0
+  [a7] allowed: draft_reply sender 0
+  [a8] held_approval_mismatch: share_file Form16 0
+  [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+  [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+  [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.. 15000
+  [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+  [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+  [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+  [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+  kartr_gate: 4 allowed, 11 held
+Nothing here can pay, send or delete: the gate only decides. Type 'help'.
+turiya> Turiya: ready
+pay ramesh.kumar@ybl 15000
+  held_needs_approval: pay ramesh.kumar@ybl 15000
+  irreversible: it needs your approval. Type 'approve' to approve exactly this.
+turiya> approve
+  allowed_with_approval: pay ramesh.kumar@ybl 15000
+  approved by you, for exactly this action. It would now go to its service,
+  which does not exist yet: nothing was paid, sent or deleted.
+  approval: HMAC-SHA256 of type|target|amount with the test key
+  9a98f640f3090f1147f2ae6765084b5943d900e688de643fb2a1c7ad401e5a31
+turiya> 

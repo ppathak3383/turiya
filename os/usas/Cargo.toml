@@ -1,0 +1,17 @@
+[package]
+name = "usas"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Usas (dawn): Turiya's UEFI start-up code. Loads seL4 and Sakshi, written from zero."
+
+[dependencies]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"
