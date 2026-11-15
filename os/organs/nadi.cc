@@ -429,11 +429,13 @@ static uint32_t init(void)
 	W->scratchpads = ((hcs2 >> 21) & 0x1f) << 5 | ((hcs2 >> 27) & 0x1f);
 	ctx = (hcc1 & 4) ? 64 : 32; W->ctx_size = ctx;
 	OP = R + caplen; RT = R + (r32(R, 0x18) & ~0x1fu); DB = R + (r32(R, 0x14) & ~0x3u);
-	if ((unsigned)(RT - R) + 0x40 > NADI_REG_PAGES * 4096u || (unsigned)(DB - R) + 4 * (NADI_MAXDEV + 1) > NADI_REG_PAGES * 4096u) return 1;
+	unsigned mapped = W->reg_bytes ? W->reg_bytes : NADI_REG_PAGES * 4096u;
+	if ((unsigned)(RT - R) + 0x40 > mapped || (unsigned)(DB - R) + 4 * (NADI_MAXDEV + 1) > mapped
+	    || (unsigned)(OP - R) + 0x400 + 0x10 * W->max_ports > mapped) return 1;
 
 	/* the firmware lets go: USB legacy support hand-off (extended capability 1) */
 	W->step = 1;
-	for (unsigned off = (hcc1 >> 16) << 2, n = 0; off && off < NADI_REG_PAGES * 4096u && n < 32; n++) {
+	for (unsigned off = (hcc1 >> 16) << 2, n = 0; off && off + 8 <= mapped && n < 32; n++) {
 		uint32_t v = r32(R, off);
 		if ((v & 0xff) == 1) {
 			w32(R, off, v | 1u << 24);                              /* OS owned */

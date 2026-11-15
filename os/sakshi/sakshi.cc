@@ -584,10 +584,14 @@ static organ tvak { "Tvak", 1, TVAK_SEED, TVAK_LEN, TVAK_SHA256 };
 static organ kosa { "Kosa", 2, KOSA_SEED, KOSA_LEN, KOSA_SHA256 };
 static organ hrdaya { "Hrdaya", 3, HRDAYA_SEED, HRDAYA_LEN, HRDAYA_SHA256 };
 static organ nadi { "Nadi", 4, NADI_SEED, NADI_LEN, NADI_SHA256 };
-static NadiWindow *nwin;                  /* Sakshi's view of Nadi's window (set when Nadi is made) */
+static organ nadi2 { "Nadi2", 5, NADI_SEED, NADI_LEN, NADI_SHA256 };   /* the second USB controller, same seed */
+static organ *const NADIS[2] = { &nadi, &nadi2 };
+static NadiWindow *nwins[2];              /* Sakshi's views of each Nadi's window (set when made) */
+static int nadi_index(const organ &o) { return &o == &nadi ? 0 : &o == &nadi2 ? 1 : -1; }
 static organ *organ_by_id(seL4_Word id)
 {
-	return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : id == nadi.id ? &nadi : nullptr;
+	return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : id == nadi.id ? &nadi
+	     : id == nadi2.id ? &nadi2 : nullptr;
 }
 static uint64_t tsc_hz;                /* processor clock: from the kernel, else measured against the heart */
 static bool tsc_known;
@@ -746,7 +750,7 @@ static void organ_rest(organ &o, const char *why)
 	colour = SAFFRON; out("  "); out(o.name); out(" rests: "); out(why); out(".\n");
 	colour = DIM;
 	if (&o == &tvak) { out("  Sakshi feels the keyboard itself (reflex) until you type 'heal tvak'.\n"); reflex_on(); }
-	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : o.id == 3 ? "hrdaya" : o.id == 4 ? "nadi" : "?"); out("'.\n"); }
+	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : o.id == 3 ? "hrdaya" : o.id == 4 ? "nadi" : o.id == 5 ? "nadi2" : "?"); out("'.\n"); }
 	colour = FG;
 	hold_prompt = false; interject_end(); status_bar();
 }
@@ -831,10 +835,14 @@ static void show_organs(void)
 	}
 	colour = SAFFRON; out("  Nadi     "); colour = FG; out("channel: the USB controller; names devices, listens to a USB keyboard\n");
 	colour = DIM;
-	if (!nadi.made) out("           made only when you type 'usb'\n");
-	else { out("           holds 3 capabilities, the controller's registers, 48 DMA pages, 1 window; no IRQ\n");
-	       out("           "); out(nadi.resting ? "resting" : (nadi.awake ? "awake" : "healing")); out(", generation "); out_dec(nadi.gen);
-	       out("; fell "); out_dec(nadi.falls); out(", healed "); out_dec(nadi.heals); out("; keys typed "); out_dec(nadi.typed); out("\n"); }
+	if (!nadi.made) out("           made only when you type 'usb' (one per USB 3 controller)\n");
+	for (int k = 0; k < 2; k++) {
+		organ &n = *NADIS[k];
+		if (!n.made) continue;
+		out("           "); out(n.name); out(": 3 capabilities, its controller's registers, 48 DMA pages, 1 window; no IRQ\n");
+		out("           "); out(n.resting ? "resting" : (n.awake ? "awake" : "healing")); out(", generation "); out_dec(n.gen);
+		out("; fell "); out_dec(n.falls); out(", healed "); out_dec(n.heals); out("; keys typed "); out_dec(n.typed); out("\n");
+	}
 	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart: the PIT timer at 50 Hz, one signal to Sakshi per tick\n");
 	colour = DIM;
 	if (!hrdaya.made) { out("           not made ("); out(hrdaya.step ? hrdaya.step : "?"); out("); Sakshi keeps the timer itself\n"); }
@@ -910,7 +918,7 @@ static void execute(char *l)
 	}
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
 	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
-		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi
+		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi : streq(w[1], "nadi2") ? &nadi2
 		         : (streq(w[1], "hrdaya") || streq(w[1], "heart")) ? &hrdaya : nullptr;
 		if (t && w[0][0] == 's') {
 			if (!t->made || !t->awake) { colour = DIM; out("  "); out(t->name); out(" is not awake.\n"); colour = FG; return; }
@@ -918,7 +926,7 @@ static void execute(char *l)
 			hold_prompt = true; hold_since = beats; seL4_Signal(t->stop); return;
 		}
 		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
-		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
+		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi, nadi2). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
 	}
 	if (streq(w[0], "mail")) {
@@ -1036,9 +1044,12 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 	if (label == L_PLUG || label == L_UNPLUG) {                       /* Nadi: something plugged in or pulled out */
 		interject_begin();
 		colour = DIM; out("  USB port "); out_dec(a); colour = FG;
-		if (label == L_PLUG && nwin && b < NADI_MAXDEV) {
-			out(": "); out(nwin->dev[b].what); out(" plugged in");
-			if (nwin->keyboard_slot && nwin->dev[b].slot == nwin->keyboard_slot) { colour = GREEN; out(" - listening: type on it"); }
+		int k = nadi_index(o);
+		NadiWindow *nw = k >= 0 ? nwins[k] : nullptr;
+		if (label == L_PLUG && nw && b < NADI_MAXDEV) {
+			out(": "); out(nw->dev[b].what); out(" plugged in");
+			if (nw->keyboard_slot && nw->dev[b].slot == nw->keyboard_slot) { colour = GREEN; out(" - listening: type on it"); }
+			if (nw->storage_slot && nw->dev[b].slot == nw->storage_slot) { colour = GREEN; out(" - type 'stick' to read it"); }
 		} else out(": unplugged");
 		out("\n"); colour = FG; interject_end();
 		return;

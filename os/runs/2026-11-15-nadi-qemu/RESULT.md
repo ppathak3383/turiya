@@ -32,3 +32,14 @@ before the command block is sent and again in place. Anything else makes Nadi fa
 |---|---|
 | `stick` | QEMU HARDDISK, 67 MB (131,072 blocks of 512 B); MBR: 1 FAT32 41 MB bootable, 2 Linux 24 MB |
 | `disk` afterwards (NVMe, GPT) | the same four partitions as before |
+
+## Two USB controllers
+
+Many laptops (the HP among them) have two USB 3 controllers. `usb` now makes one Nadi per controller (Nadi and
+Nadi2, the same seed, each with only its own controller's registers). Sakshi reads each controller's capability
+registers first and maps only the register space that controller has, so one Nadi can never reach the other's.
+
+| Test (two qemu-xhci controllers, a stick on the second) | Result |
+|---|---|
+| `usb` | Nadi (00:03.0): nothing plugged in; Nadi2 (00:04.0): port 1 storage |
+| `stick` | read through Nadi2: FAT32 41 MB bootable, Linux 24 MB |

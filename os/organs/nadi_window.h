@@ -25,6 +25,7 @@ struct NadiWindow
 	uint64_t bar_va;
 	uint64_t pa[NADI_NDMA], va[NADI_NDMA];
 	uint64_t tsc_hz;
+	uint32_t reg_bytes;                              /* how much of the register space is mapped */
 	/* written by Nadi */
 	uint32_t status, version, max_slots, max_ports, scratchpads, ctx_size;
 	uint32_t ports_connected, ndev;
