@@ -461,7 +461,7 @@ static uint32_t init(void)
 	w32(OP, 0x38, slots);
 	Page dc = page(); dcbaa = (volatile uint64_t *)dc.va;
 	if (W->scratchpads) {
-		if (W->scratchpads > 24) return 4;
+		if (W->scratchpads > 64) return 4;                          /* up to 64 pages for the controller's own use */
 		Page sa = page();
 		for (unsigned i = 0; i < W->scratchpads; i++) { Page sp = page(); if (!sp.va) return 5; ((volatile uint64_t *)sa.va)[i] = sp.pa; }
 		dcbaa[0] = sa.pa;

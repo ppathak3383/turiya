@@ -839,7 +839,7 @@ static void show_organs(void)
 	for (int k = 0; k < 2; k++) {
 		organ &n = *NADIS[k];
 		if (!n.made) continue;
-		out("           "); out(n.name); out(": 3 capabilities, its controller's registers, 48 DMA pages, 1 window; no IRQ\n");
+		out("           "); out(n.name); out(": 3 capabilities, its controller's registers, 112 DMA pages, 1 window; no IRQ\n");
 		out("           "); out(n.resting ? "resting" : (n.awake ? "awake" : "healing")); out(", generation "); out_dec(n.gen);
 		out("; fell "); out_dec(n.falls); out(", healed "); out_dec(n.heals); out("; keys typed "); out_dec(n.typed); out("\n");
 	}

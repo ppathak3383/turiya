@@ -10,7 +10,7 @@ enum : uint64_t {
 	NADI_DMA_VA    = 0x7100000,     /* DMA pages, one after another */
 	NADI_WINDOW_VA = 0x7200000,     /* this page */
 };
-enum { NADI_NDMA = 48, NADI_REG_PAGES = 16, NADI_MAXDEV = 8, NADI_DATA = NADI_NDMA - 1 };   /* the last DMA page: data Sakshi reads */
+enum { NADI_NDMA = 112, NADI_REG_PAGES = 16, NADI_MAXDEV = 8, NADI_DATA = NADI_NDMA - 1 };   /* the last DMA page: data Sakshi reads */
 
 struct NadiDevice
 {
