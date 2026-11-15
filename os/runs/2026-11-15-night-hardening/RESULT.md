@@ -1,7 +1,7 @@
 # Night of 15 Nov 2026: the storage organs proved read-only, the readers fuzzed, healing before telling
 
-Bundle **j** (`USAS-2026-11-15j.EFI`; image `turiya-usas-2026-11-15j.img`, hashes in the laptop's WORKLOG). It
-supersedes bundle i, which had everything here except the descriptor walk (row 6 of the findings). Emulator: QEMU 8.2, OVMF, `-machine pc -cpu Skylake-Client`.
+Bundle **k** (`USAS-2026-11-15k.EFI`, sha256 `d17ccc14…7b88`; image `turiya-usas-2026-11-15k.img`, sha256
+`175329d3…0772`). It supersedes i (no descriptor fix) and j (the breath's revive still wrote before it healed). Emulator: QEMU 8.2, OVMF, `-machine pc -cpu Skylake-Client`.
 
 ## Changes
 
@@ -41,7 +41,7 @@ the screen was full, each line scrolled a 2048 × 2048 framebuffer in the emulat
 | Tvak | 2.5–4.7 ms | 1.0 ms |
 | Kosa | 3.3–4.5 ms | 2.0 ms |
 | Hrdaya (fell) | 1.8 ms | 0.49 ms |
-| Hrdaya (went silent, seen by the breath) | 1.1 s to notice + heal | 55.7 ms heal after 2 s of silence (unchanged path) |
+| Hrdaya (went silent, seen by the breath) | 55.7 ms heal after 2 s of silence | 0.57–0.88 ms (`serial_R.txt`: once on a fresh screen, once on a full one) |
 | Nadi | 125 ms | 104 ms (the controller reset itself waits 100 ms) |
 
 The report reads exactly as before, just written once the organ is back:

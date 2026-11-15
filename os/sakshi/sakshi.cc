@@ -582,6 +582,7 @@ struct organ
 	unsigned long fell_at[4];          /* heartbeat (+1) of its last four falls */
 	uint64_t t_fall;
 	seL4_Word fell_label, fell_ip, fell_addr;   /* what seL4 said about its last fall */
+	const char *stop_why;              /* or, if the breath stopped it, why */
 	bool untold;                       /* healed first: the report of the fall is still to be written */
 	bool made, awake, resting, present;
 	const char *step; long err;        /* where making it failed, if it did */
@@ -766,14 +767,15 @@ static void organ_rest(organ &o, const char *why)
 }
 
 /* the breath saw an organ go silent: stop it, re-make it from its seed, start it again */
+static void tell_fall(organ &o, bool restarted);
+
 static void organ_revive(organ &o, const char *why)
 {
 	seL4_TCB_Suspend(o.tcb);
 	o.awake = false; o.t_fall = rdtsc(); o.falls++;
-	interject_begin();
-	colour = RED; out("  "); out(o.name); out(" stopped: "); out(why); out("\n");
-	if (!remake(o) || start(o)) { organ_rest(o, "it could not be re-made"); return; }
-	colour = DIM; out("  re-made from its seed (SHA-256 checked) and started again\n"); colour = FG;
+	o.stop_why = why;
+	if (!remake(o) || start(o)) { tell_fall(o, false); organ_rest(o, "it could not be re-made"); return; }
+	o.untold = true;                                                 /* heal first, tell after, as for a fall */
 	if (!hold_prompt) { hold_prompt = true; hold_since = beats; }
 }
 
@@ -1035,6 +1037,9 @@ static void reflex_poll(void)
 static void tell_fall(organ &o, bool restarted)
 {
 	interject_begin();
+	if (o.stop_why) {                                                /* the breath stopped it: it had gone silent */
+		colour = RED; out("  "); out(o.name); out(" stopped: "); out(o.stop_why); out("\n"); colour = DIM;
+	} else {
 	colour = RED; out("  "); out(o.name); out(" fell: ");
 	out(o.fell_label == seL4_Fault_VMFault ? "it touched memory it does not hold"
 	  : o.fell_label == seL4_Fault_UserException ? "a processor exception"
@@ -1043,16 +1048,17 @@ static void tell_fall(organ &o, bool restarted)
 	if (o.fell_label == seL4_Fault_VMFault) { out(", address "); out_hex(o.fell_addr); }
 	out(")\n");
 	colour = DIM; out("  seL4 stopped it at that instruction; nothing outside its own pages was touched.\n");
+	}
 	if (restarted) out("  re-made from its seed (SHA-256 checked) and started again\n");
 	colour = FG;
-	o.untold = false;
+	o.untold = false; o.stop_why = nullptr;
 }
 
 /* an organ fell: seL4 stopped it and told us. Re-make it from its seed and start it again, within limits;
    heal first, tell after: it is running again before Sakshi writes a word. */
 static void organ_fell(organ &o, seL4_MessageInfo_t info)
 {
-	o.t_fall = rdtsc(); o.awake = false; o.falls++;
+	o.t_fall = rdtsc(); o.awake = false; o.falls++; o.stop_why = nullptr;
 	o.fell_label = seL4_MessageInfo_get_label(info);
 	o.fell_ip = seL4_GetMR(0);
 	o.fell_addr = o.fell_label == seL4_Fault_VMFault ? seL4_GetMR(seL4_VMFault_Addr) : 0;
