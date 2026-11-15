@@ -5,6 +5,8 @@
 
 
 static const char *nadi_why;
+static const uint8_t *ndata;           /* Sakshi's read-only view of Nadi's data page */
+static uint32_t stick_seq;
 static pci_fn xhci_fn;
 static bool have_xhci;
 
@@ -47,6 +49,10 @@ static bool make_nadi(void)
 		if (a.error) return nadi_fail("no DMA address");
 		nwin->pa[i] = a.paddr; nwin->va[i] = NADI_DMA_VA + i * 4096UL;
 		if (organ_map(nadi, f, nwin->va[i], seL4_ReadWrite, seL4_X86_Default_VMAttributes)) return nadi_fail("DMA map");
+		if (i == NADI_DATA) {
+			if (map_in(seL4_CapInitThreadVSpace, f, view + 4096, seL4_CanRead, seL4_X86_Default_VMAttributes)) return nadi_fail("data view");
+			ndata = (const uint8_t *)(view + 4096);
+		}
 	}
 	nwin->bar_va = NADI_REGS_VA; nwin->tsc_hz = tsc_hz;
 	if (!remake(nadi) || start(nadi)) return nadi_fail("its first start");
@@ -84,7 +90,32 @@ static void do_usb(void)
 		out_pad(d.what, 22);
 		colour = DIM; out_hexw(d.vendor, 4); out(":"); out_hexw(d.product, 4); out("  "); out(speed_word(d.speed));
 		if (nwin->keyboard_slot && d.slot == nwin->keyboard_slot) { colour = GREEN; out("  <- listening: type on it"); }
+		if (nwin->storage_slot && d.slot == nwin->storage_slot) { colour = GREEN; out("  <- type 'stick' to read it"); }
 		out("\n"); colour = FG;
 	}
 	if (!nwin->ndev) { colour = DIM; out("    nothing answered\n"); colour = FG; }
+}
+
+static bool stick_read(uint64_t lba, uint32_t count)
+{
+	nwin->req_lba = lba; nwin->req_count = count; nwin->req_seq = ++stick_seq;
+	seL4_Signal(nadi.req);
+	seL4_Word seq = 0, st = 0;
+	if (!wait_for(nadi, L_DONE, 5, &seq, &st)) return false;
+	return seq == stick_seq && st == 0;
+}
+
+static void do_stick(void)
+{
+	if (!nadi.made) { do_usb(); if (!nadi.made || !nadi.awake) return; }
+	colour = SAFFRON; out("  Nadi reads the USB stick "); colour = DIM; out("(only read commands exist in it)\n"); colour = FG;
+	if (!nwin->storage_slot) {
+		colour = DIM; out("  no USB stick is ready");
+		if (nwin->storage_status) { out(" (code "); out_hex(nwin->storage_status); out(")"); }
+		out("\n"); colour = FG; return;
+	}
+	colour = DIM; out("  stick      "); colour = FG; out(nwin->storage_vendor); out(" "); out(nwin->storage_product); out("\n");
+	colour = DIM; out("  capacity   "); colour = FG; out_size(nwin->storage_blocks * nwin->storage_block_size);
+	colour = DIM; out(" ("); out_dec(nwin->storage_blocks); out(" blocks of "); out_dec(nwin->storage_block_size); out(" bytes)\n"); colour = FG;
+	list_partitions(stick_read, ndata, nwin->storage_block_size, nwin->storage_blocks);
 }

@@ -1,0 +1,13 @@
+turiya> Turiya: ready
+stick
+  Nadi, the channel (USB: finds what is plugged in; listens to a USB keyboard)
+  controller xHCI 0x100  at PCI 00:03.0, 8 ports, 64 slots, 0 scratchpad pages
+  connected  1 port
+    port 1  storage               46f4:0001  super speed  <- type 'stick' to read it
+  Nadi reads the USB stick (only read commands exist in it)
+  stick      QEMU     QEMU HARDDISK   
+  capacity   67 MB (131072 blocks of 512 bytes)
+  partitions (MBR):
+    1   FAT32                         41 MB      type 0c, bootable
+    2   Linux                         24 MB      type 83
+turiya> 

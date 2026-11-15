@@ -10,7 +10,7 @@ enum : uint64_t {
 	NADI_DMA_VA    = 0x7100000,     /* DMA pages, one after another */
 	NADI_WINDOW_VA = 0x7200000,     /* this page */
 };
-enum { NADI_NDMA = 48, NADI_REG_PAGES = 16, NADI_MAXDEV = 8 };
+enum { NADI_NDMA = 48, NADI_REG_PAGES = 16, NADI_MAXDEV = 8, NADI_DATA = NADI_NDMA - 1 };   /* the last DMA page: data Sakshi reads */
 
 struct NadiDevice
 {
@@ -31,5 +31,12 @@ struct NadiWindow
 	NadiDevice dev[NADI_MAXDEV];
 	uint32_t keyboard_slot;                          /* 0: no keyboard being listened to */
 	uint32_t step;                                   /* where init stopped, if it did */
+	/* a USB stick (mass storage, bulk-only, SCSI): read-only */
+	uint32_t storage_slot, storage_status;           /* 0: none ready */
+	char storage_vendor[9], storage_product[17];
+	uint64_t storage_blocks;
+	uint32_t storage_block_size;
+	uint64_t req_lba;                                /* one request at a time, as with Kosa */
+	uint32_t req_count, req_seq, done_seq, done_status;
 };
 static_assert(sizeof(NadiWindow) <= 4096, "the window is one page");

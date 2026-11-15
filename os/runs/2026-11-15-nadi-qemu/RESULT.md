@@ -20,3 +20,15 @@ the HP.
 | after the heal | the USB keyboard types again: 22 keys counted through Nadi |
 
 Known gap: as with Kosa, without an IOMMU a confused controller could DMA anywhere.
+
+## Later the same night: USB sticks, read-only
+
+Nadi now also reads a USB stick (mass storage, bulk-only transport, SCSI), **read-only by construction**: the
+only commands it can send are TEST UNIT READY, REQUEST SENSE, INQUIRY, READ CAPACITY(10) and READ(10), checked
+before the command block is sent and again in place. Anything else makes Nadi fall instead of sending.
+`stick` lists the stick's partitions; the partition reader is now shared with `disk` and understands MBR and GPT.
+
+| Test (stick attached read-only to the emulator) | Result |
+|---|---|
+| `stick` | QEMU HARDDISK, 67 MB (131,072 blocks of 512 B); MBR: 1 FAT32 41 MB bootable, 2 Linux 24 MB |
+| `disk` afterwards (NVMe, GPT) | the same four partitions as before |

@@ -201,28 +201,35 @@ static const char *gpt_type(const uint8_t *g)
 	return "other";
 }
 
-static void do_disk(void)
+/* the partition table of any block device Sakshi can read through an organ: GPT, else MBR */
+static void list_partitions(bool (*rd)(uint64_t, uint32_t), const uint8_t *data, uint32_t bs, uint64_t blocks)
 {
-	colour = SAFFRON; out("  Kosa, the storehouse "); colour = DIM; out("(it can only read: no write command exists in it)\n"); colour = FG;
-	if (!kosa.made) {
-		if (!make_kosa()) { colour = RED; out("  Kosa could not be made: "); out(kosa_why ? kosa_why : "?"); out("\n"); colour = FG; return; }
-		seL4_Word gen = 0, st = 0;
-		if (!wait_for(kosa, L_READY, 5, &gen, &st)) { colour = RED; out("  no word from Kosa.\n"); colour = FG; return; }
-		kosa.awake = true; kosa.present = st == 0;
+	if (!rd(0, 1)) { colour = RED; out("  block 0 could not be read\n"); colour = FG; return; }
+	bool gpt = data[510] == 0x55 && data[511] == 0xaa && data[450] == 0xee;
+	if (data[510] == 0x55 && data[511] == 0xaa && !gpt) {
+		colour = DIM; out("  partitions (MBR):\n"); colour = FG;
+		uint8_t mbr[64]; for (int i = 0; i < 64; i++) mbr[i] = data[446 + i];
+		unsigned found = 0;
+		for (int k = 0; k < 4; k++) {
+			const uint8_t *e = mbr + 16 * k;
+			if (!e[4]) continue;
+			found++;
+			uint64_t n = rd32(e + 12);
+			colour = DIM; out("    "); out_dec(k + 1); out("   "); colour = FG;
+			const char *t = e[4] == 0x0c || e[4] == 0x0b ? "FAT32" : e[4] == 0x07 ? "NTFS or exFAT" : e[4] == 0x83 ? "Linux"
+			              : e[4] == 0x06 || e[4] == 0x0e ? "FAT16" : e[4] == 0xef ? "EFI system" : "other";
+			out_pad(t, 30);
+			unsigned c0 = cur_x; out_size(n * bs); while (cur_x < c0 + 11) out(" ");
+			colour = DIM; out("type "); out_hexw(e[4], 2); out(e[0] == 0x80 ? ", bootable\n" : "\n"); colour = FG;
+		}
+		if (!found) { colour = DIM; out("    none\n"); colour = FG; }
+		return;
 	}
-	if (!kosa.awake) { colour = DIM; out("  Kosa is not awake.\n"); colour = FG; return; }
-	if (kwin->status) { colour = RED; out("  the controller did not start (code "); out_hex(kwin->status); out(")\n"); colour = FG; return; }
-	colour = DIM; out("  controller "); colour = FG; out(kwin->model); colour = DIM; out("  firmware "); colour = FG; out(kwin->firmware);
-	colour = DIM; out("  at PCI "); out_hexw(nvme_fn.bus, 2); out(":"); out_hexw(nvme_fn.dev, 2); out("."); out_hexw(nvme_fn.fn, 1); out("\n");
-	colour = DIM; out("  capacity   "); colour = FG; out_size(kwin->blocks * kwin->block_size);
-	colour = DIM; out(" ("); out_dec(kwin->blocks); out(" blocks of "); out_dec(kwin->block_size); out(" bytes)\n"); colour = FG;
-
-	const uint32_t bs = kwin->block_size;
-	if (!disk_read(1, 1)) { colour = RED; out("  block 1 could not be read\n"); colour = FG; return; }
+	if (!rd(1, 1)) { colour = RED; out("  block 1 could not be read\n"); colour = FG; return; }
 	static const char sig[] = "EFI PART";
-	for (int i = 0; i < 8; i++) if (kdata[i] != (uint8_t)sig[i]) { colour = DIM; out("  no GPT partition table\n"); colour = FG; return; }
-	uint64_t elba = rd64(kdata + 72);
-	uint32_t n = rd32(kdata + 80), esz = rd32(kdata + 84);
+	for (int i = 0; i < 8; i++) if (data[i] != (uint8_t)sig[i]) { colour = DIM; out("  no partition table\n"); colour = FG; return; }
+	uint64_t elba = rd64(data + 72);
+	uint32_t n = rd32(data + 80), esz = rd32(data + 84);
 	if (esz < 128 || esz > 4096 || (4096 % esz) || !n) { colour = RED; out("  the partition table looks damaged\n"); colour = FG; return; }
 	if (n > 128) n = 128;
 	unsigned per = 4096 / esz, found = 0;
@@ -230,10 +237,10 @@ static void do_disk(void)
 	for (uint32_t first = 0; first < n; first += per) {
 		uint64_t lba = elba + (uint64_t)first * esz / bs;
 		uint32_t cnt = 4096 / bs;
-		if (lba + cnt > kwin->blocks) break;
-		if (!disk_read(lba, cnt)) { colour = RED; out("  the partition entries could not be read\n"); colour = FG; return; }
+		if (lba + cnt > blocks) break;
+		if (!rd(lba, cnt)) { colour = RED; out("  the partition entries could not be read\n"); colour = FG; return; }
 		for (unsigned k = 0; k < per && first + k < n; k++) {
-			const uint8_t *e = kdata + k * esz;
+			const uint8_t *e = data + k * esz;
 			bool used = false;
 			for (int j = 0; j < 16; j++) used |= e[j] != 0;
 			if (!used) continue;
@@ -254,4 +261,23 @@ static void do_disk(void)
 		}
 	}
 	if (!found) { colour = DIM; out("    none\n"); colour = FG; }
+}
+
+static void do_disk(void)
+{
+	colour = SAFFRON; out("  Kosa, the storehouse "); colour = DIM; out("(it can only read: no write command exists in it)\n"); colour = FG;
+	if (!kosa.made) {
+		if (!make_kosa()) { colour = RED; out("  Kosa could not be made: "); out(kosa_why ? kosa_why : "?"); out("\n"); colour = FG; return; }
+		seL4_Word gen = 0, st = 0;
+		if (!wait_for(kosa, L_READY, 5, &gen, &st)) { colour = RED; out("  no word from Kosa.\n"); colour = FG; return; }
+		kosa.awake = true; kosa.present = st == 0;
+	}
+	if (!kosa.awake) { colour = DIM; out("  Kosa is not awake.\n"); colour = FG; return; }
+	if (kwin->status) { colour = RED; out("  the controller did not start (code "); out_hex(kwin->status); out(")\n"); colour = FG; return; }
+	colour = DIM; out("  controller "); colour = FG; out(kwin->model); colour = DIM; out("  firmware "); colour = FG; out(kwin->firmware);
+	colour = DIM; out("  at PCI "); out_hexw(nvme_fn.bus, 2); out(":"); out_hexw(nvme_fn.dev, 2); out("."); out_hexw(nvme_fn.fn, 1); out("\n");
+	colour = DIM; out("  capacity   "); colour = FG; out_size(kwin->blocks * kwin->block_size);
+	colour = DIM; out(" ("); out_dec(kwin->blocks); out(" blocks of "); out_dec(kwin->block_size); out(" bytes)\n"); colour = FG;
+
+	list_partitions(disk_read, kdata, kwin->block_size, kwin->blocks);
 }

@@ -19,8 +19,8 @@
 #include "nadi_window.h"
 
 enum : seL4_CPtr { C_FAULT = 1, C_OUT = 2, C_NTFN = 3 };
-enum : seL4_Word { L_KEY = 1, L_READY = 2, L_PLUG = 5, L_UNPLUG = 6 };
-enum : seL4_Word { N_PULSE = 2, N_FALL = 0x80 };
+enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3, L_PLUG = 5, L_UNPLUG = 6 };
+enum : seL4_Word { N_PULSE = 2, N_REQ = 4, N_FALL = 0x80 };
 
 extern "C" { __attribute__((aligned(16), used)) unsigned char stack[16 * 1024]; }
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -67,7 +67,7 @@ static unsigned next_page;
 struct Page { volatile uint8_t *va; uint64_t pa; };
 static Page page(void)
 {
-	if (next_page >= NADI_NDMA) return { 0, 0 };
+	if (next_page >= NADI_DATA) return { 0, 0 };                    /* the last page is the data page */
 	unsigned i = next_page++;
 	memset((void *)W->va[i], 0, 4096);
 	return { (volatile uint8_t *)W->va[i], W->pa[i] };
@@ -117,6 +117,7 @@ static void event_pop(void)
 }
 
 static unsigned ctx;                                               /* context size: 32 or 64 bytes */
+static bool keyboard_event(uint32_t c, uint32_t s);              /* true if it was the keyboard's */
 
 /* wait for an event of one type (and slot, if nonzero); other events are dropped. Returns the completion code. */
 static int wait_event(unsigned type, unsigned slot, uint64_t ms, uint32_t *ctrl, uint32_t *status)
@@ -127,6 +128,7 @@ static int wait_event(unsigned type, unsigned slot, uint64_t ms, uint32_t *ctrl,
 		if (e) {
 			uint32_t c = e->control, s = e->status;
 			event_pop();
+			if (keyboard_event(c, s)) continue;
 			if (((c >> 10) & 0x3f) == type && (!slot || ((c >> 24) & 0xff) == slot)) {
 				if (ctrl) *ctrl = c;
 				if (status) *status = s;
@@ -185,6 +187,75 @@ static const char *class_word(uint8_t cls, uint8_t sub, uint8_t proto)
 
 static uint8_t kbd_dci;
 
+/* ---- a USB stick: bulk-only transport, SCSI, READ-ONLY BY CONSTRUCTION ---- */
+struct Msc { unsigned slot; uint8_t in_dci, out_dci; Ring in, out; uint32_t tag; };
+static Msc msc;
+
+static uint32_t be32(volatile uint8_t const *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
+static void le32(volatile uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
+
+static int bulk(Ring &r, uint8_t dci, uint64_t pa, uint32_t len)
+{
+	ring_push(r, pa, len, 1u << 10 | 1u << 5 | 1u << 2);          /* normal, interrupt on completion and on short packet */
+	w32(DB, msc.slot * 4, dci);
+	uint32_t c = 0, st = 0;
+	int cc = wait_event(32, msc.slot, 3000, &c, &st);
+	return cc == 1 || cc == 13 ? 0 : (cc < 0 ? 0x100 : cc);
+}
+
+/* the only way a command reaches the stick: TEST UNIT READY, REQUEST SENSE, INQUIRY, READ CAPACITY(10), READ(10) */
+static int scsi(uint8_t const *cdb, unsigned cdblen, uint32_t inlen, uint64_t data_pa)
+{
+	uint8_t op = cdb[0];
+	if (!(op == 0x00 || op == 0x03 || op == 0x12 || op == 0x25 || op == 0x28))
+		*(volatile uint32_t *)0 = 0;                               /* not a read: refuse by falling, never by sending */
+	volatile uint8_t *cbw = buf.va + 0x100, *csw = buf.va + 0x200;
+	for (int i = 0; i < 31; i++) cbw[i] = 0;
+	le32(cbw, 0x43425355); le32(cbw + 4, ++msc.tag); le32(cbw + 8, inlen);
+	cbw[12] = inlen ? 0x80 : 0; cbw[14] = (uint8_t)cdblen;
+	for (unsigned i = 0; i < cdblen; i++) cbw[15 + i] = cdb[i];
+	if (cbw[15] != 0x00 && cbw[15] != 0x03 && cbw[15] != 0x12 && cbw[15] != 0x25 && cbw[15] != 0x28)
+		*(volatile uint32_t *)0 = 0;                               /* checked again in place */
+	if (bulk(msc.out, msc.out_dci, buf.pa + 0x100, 31)) return 0x10;
+	if (inlen && bulk(msc.in, msc.in_dci, data_pa, inlen)) return 0x20;
+	if (bulk(msc.in, msc.in_dci, buf.pa + 0x200, 13)) return 0x30;
+	uint32_t sig = csw[0] | csw[1] << 8 | csw[2] << 16 | (uint32_t)csw[3] << 24;
+	uint32_t tag = csw[4] | csw[5] << 8 | csw[6] << 16 | (uint32_t)csw[7] << 24;
+	if (sig != 0x53425355 || tag != msc.tag) return 0x40;
+	return csw[12];                                                /* 0: passed */
+}
+
+static void storage_start(void)
+{
+	volatile uint8_t *d = (volatile uint8_t *)W->va[NADI_DATA];
+	uint8_t inq[6] = { 0x12, 0, 0, 0, 36, 0 };
+	if (int r = scsi(inq, 6, 36, W->pa[NADI_DATA])) { W->storage_status = 0x1000u | (uint32_t)r; return; }
+	for (int i = 0; i < 8; i++) W->storage_vendor[i] = (d[8 + i] >= 32 && d[8 + i] < 127) ? (char)d[8 + i] : ' ';
+	for (int i = 0; i < 16; i++) W->storage_product[i] = (d[16 + i] >= 32 && d[16 + i] < 127) ? (char)d[16 + i] : ' ';
+	W->storage_vendor[8] = 0; W->storage_product[16] = 0;
+	uint8_t tur[6] = { 0, 0, 0, 0, 0, 0 };
+	for (int tries = 0; tries < 5 && scsi(tur, 6, 0, 0); tries++) {          /* wait until the stick is ready */
+		uint8_t rs[6] = { 0x03, 0, 0, 0, 18, 0 };
+		scsi(rs, 6, 18, W->pa[NADI_DATA]);
+		pause_ms(100);
+	}
+	uint8_t cap[10] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	if (int r = scsi(cap, 10, 8, W->pa[NADI_DATA])) { W->storage_status = 0x2000u | (uint32_t)r; return; }
+	W->storage_blocks = (uint64_t)be32(d) + 1; W->storage_block_size = be32(d + 4);
+	if (W->storage_block_size < 512 || W->storage_block_size > 4096) { W->storage_status = 0x3000; return; }
+	W->storage_status = 0;
+	W->storage_slot = msc.slot;
+}
+
+static uint32_t storage_read(uint64_t lba, uint32_t count)
+{
+	if (!W->storage_slot || !count || count * W->storage_block_size > 4096 || lba + count > W->storage_blocks || lba > 0xffffffffULL)
+		return 8;
+	uint8_t rd[10] = { 0x28, 0, (uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
+	                   0, (uint8_t)(count >> 8), (uint8_t)count, 0 };
+	return (uint32_t)scsi(rd, 10, count * W->storage_block_size, W->pa[NADI_DATA]);
+}
+
 static uint32_t address_and_name(unsigned port, unsigned speed)
 {
 	uint32_t c = 0;
@@ -229,7 +300,8 @@ static uint32_t address_and_name(unsigned port, unsigned speed)
 
 	/* walk interfaces and endpoints; the first interface names the device; a boot keyboard is listened to */
 	int ifnum = -1, kbd_if = -1; uint8_t kbd_ep = 0, kbd_int = 10; uint16_t kbd_mps = 8;
-	bool named = false, in_kbd = false;
+	bool named = false, in_kbd = false, in_msc = false;
+	uint8_t msc_in = 0, msc_out = 0; uint16_t msc_in_mps = 512, msc_out_mps = 512; uint8_t msc_burst_in = 0, msc_burst_out = 0, *last_burst = nullptr;
 	for (unsigned o = 0; o + 2 <= total; ) {
 		unsigned len = buf.va[o], type = buf.va[o + 1];
 		if (len < 2) break;
@@ -237,9 +309,15 @@ static uint32_t address_and_name(unsigned port, unsigned speed)
 			ifnum = buf.va[o + 2];
 			uint8_t c3 = buf.va[o + 5], s3 = buf.va[o + 6], p3 = buf.va[o + 7];
 			in_kbd = c3 == 3 && s3 == 1 && p3 == 1;
+			in_msc = c3 == 8 && s3 == 6 && p3 == 0x50;              /* SCSI over bulk-only transport */
 			if (!named || in_kbd) { d.cls = c3; d.sub = s3; d.proto = p3; named = true; }
 			if (in_kbd && kbd_if < 0) kbd_if = ifnum;
 		}
+		if (type == 5 && o + 7 <= total && in_msc && (buf.va[o + 3] & 3) == 2) {
+			uint16_t m = (uint16_t)(buf.va[o + 4] | buf.va[o + 5] << 8);
+			if (buf.va[o + 2] & 0x80) { if (!msc_in) { msc_in = buf.va[o + 2] & 0x0f; msc_in_mps = m; last_burst = &msc_burst_in; } }
+			else if (!msc_out) { msc_out = buf.va[o + 2] & 0x0f; msc_out_mps = m; last_burst = &msc_burst_out; }
+		} else if (type == 0x30 && last_burst && o + 3 <= total) { *last_burst = buf.va[o + 2]; last_burst = nullptr; }
 		if (type == 5 && o + 7 <= total && in_kbd && !kbd_ep && (buf.va[o + 2] & 0x80) && (buf.va[o + 3] & 3) == 3) {
 			kbd_ep = buf.va[o + 2] & 0x0f; kbd_mps = (uint16_t)(buf.va[o + 4] | buf.va[o + 5] << 8); kbd_int = buf.va[o + 6];
 		}
@@ -273,6 +351,27 @@ static uint32_t address_and_name(unsigned port, unsigned speed)
 		W->keyboard_slot = slot;
 		ring_push(kin, buf.pa + 2048, 8, 1u << 10 | 1u << 5);    /* one report in flight: normal, IOC */
 		w32(DB, slot * 4, kbd_dci);
+	}
+	if (msc_in && msc_out && !msc.slot && !(W->keyboard_slot == slot)) {
+		if (control(slot, 0x00, 9, cfg, 0, 0)) return 0;          /* set configuration */
+		Page ri = page(), ro = page();
+		if (!ri.va || !ro.va) return 0x106;
+		ring_init(msc.in, ri); ring_init(msc.out, ro);
+		msc.in_dci = (uint8_t)(msc_in * 2 + 1); msc.out_dci = (uint8_t)(msc_out * 2);
+		unsigned hi = msc.in_dci > msc.out_dci ? msc.in_dci : msc.out_dci;
+		memset((void *)ictx.va, 0, 4096);
+		in_ctrl()[1] = 1u | 1u << msc.in_dci | 1u << msc.out_dci;
+		in_slot()[0] = (uint32_t)hi << 27 | (uint32_t)speed << 20;
+		in_slot()[1] = (uint32_t)port << 16;
+		in_ep(msc.in_dci)[1] = (uint32_t)msc_in_mps << 16 | (uint32_t)msc_burst_in << 8 | 6u << 3 | 3u << 1;   /* bulk IN */
+		*(volatile uint64_t *)&in_ep(msc.in_dci)[2] = ri.pa | 1;
+		in_ep(msc.in_dci)[4] = 512;
+		in_ep(msc.out_dci)[1] = (uint32_t)msc_out_mps << 16 | (uint32_t)msc_burst_out << 8 | 2u << 3 | 3u << 1; /* bulk OUT */
+		*(volatile uint64_t *)&in_ep(msc.out_dci)[2] = ro.pa | 1;
+		in_ep(msc.out_dci)[4] = 512;
+		if (command(ictx.pa, 12u << 10 | slot << 24, nullptr) != 1) return 0x107;   /* configure endpoint */
+		msc.slot = slot;
+		storage_start();
 	}
 	return 0;
 }
@@ -320,6 +419,7 @@ static uint32_t init(void)
 {
 	/* a fresh start (also after a heal): forget what the window says about devices */
 	W->status = 0; W->ports_connected = 0; W->ndev = 0; W->keyboard_slot = 0; W->step = 0;
+	W->storage_slot = 0; W->storage_status = 0;
 	memset((void *)W->dev, 0, sizeof W->dev);
 	R = (volatile uint8_t *)W->bar_va;
 	unsigned caplen = *(volatile uint8_t *)R;
@@ -402,30 +502,34 @@ static char usage_char(uint8_t u, bool shift)
 
 static uint8_t last[6];
 
+static bool keyboard_event(uint32_t c, uint32_t s)
+{
+	if (!W->keyboard_slot || ((c >> 10) & 0x3f) != 32 || ((c >> 24) & 0xff) != W->keyboard_slot || ((c >> 16) & 0x1f) != kbd_dci)
+		return false;
+	unsigned cc = s >> 24;
+	if (cc == 1 || cc == 13) {
+		volatile uint8_t *rep = buf.va + 2048;
+		bool shift = rep[0] & 0x22;
+		for (int i = 2; i < 8; i++) {
+			uint8_t u = rep[i];
+			if (u < 4) continue;
+			bool was = false;
+			for (int j = 0; j < 6; j++) was |= last[j] == u;
+			if (!was) { char ch = usage_char(u, shift); if (ch) say(L_KEY, (unsigned char)ch, 0); }
+		}
+		for (int i = 0; i < 6; i++) last[i] = rep[2 + i];
+	}
+	ring_push(kin, buf.pa + 2048, 8, 1u << 10 | 1u << 5);        /* the next report */
+	w32(DB, W->keyboard_slot * 4, kbd_dci);
+	return true;
+}
+
 static void keyboard_poll(void)
 {
-	for (;;) {
-		volatile Trb *e = event_peek();
-		if (!e) return;
-		uint32_t c = e->control, s = e->status; uint64_t at = e->param;
+	while (volatile Trb *e = event_peek()) {
+		uint32_t c = e->control, s = e->status;
 		event_pop();
-		if (((c >> 10) & 0x3f) != 32 || ((c >> 24) & 0xff) != W->keyboard_slot || ((c >> 16) & 0x1f) != kbd_dci) continue;
-		unsigned cc = s >> 24;
-		(void)at;
-		if (cc == 1 || cc == 13) {
-			volatile uint8_t *rep = buf.va + 2048;
-			bool shift = rep[0] & 0x22;
-			for (int i = 2; i < 8; i++) {
-				uint8_t u = rep[i];
-				if (u < 4) continue;
-				bool was = false;
-				for (int j = 0; j < 6; j++) was |= last[j] == u;
-				if (!was) { char ch = usage_char(u, shift); if (ch) say(L_KEY, (unsigned char)ch, 0); }
-			}
-			for (int i = 0; i < 6; i++) last[i] = rep[2 + i];
-		}
-		ring_push(kin, buf.pa + 2048, 8, 1u << 10 | 1u << 5);
-		w32(DB, W->keyboard_slot * 4, kbd_dci);
+		keyboard_event(c, s);
 	}
 }
 
@@ -439,6 +543,12 @@ extern "C" void nadi_main(seL4_Word gen, seL4_Word ipc)
 		seL4_Word bits = 0;
 		seL4_Wait(C_NTFN, &bits);
 		if (bits & N_FALL) *(volatile uint32_t *)0x8000000000UL = 0;      /* the crash test */
+		if ((bits & N_REQ) && !st) {
+			uint32_t seq = W->req_seq;
+			uint32_t r = storage_read(W->req_lba, W->req_count);
+			W->done_status = r; W->done_seq = seq;
+			say(L_DONE, seq, r);
+		}
 		if ((bits & N_PULSE) && !st) {
 			scan_ports(true);
 			if (W->keyboard_slot) keyboard_poll();
