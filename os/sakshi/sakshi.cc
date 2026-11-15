@@ -22,6 +22,8 @@
 #include "kartr_rule.h"
 #include "kbd_i8042.h"
 #include "tvak_seed.h"
+#include "kosa_seed.h"
+#include "kosa_window.h"
 
 typedef unsigned long uptr;
 typedef unsigned int  u32b;
@@ -419,6 +421,7 @@ static void help(void)
 	out("  about                    what is running, on what\n");
 	out("  organs                   the parts of Turiya: duty, what each holds, health\n");
 	out("  body                     the hardware Turiya found (read-only survey)\n");
+	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");
 	out("  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000\n");
@@ -482,8 +485,8 @@ static void hexify(const Turiya::u8 *b, unsigned n, char *hx)
 
 /* ---- organs: compartments with one duty (svadharma), fixed limits (maryada) and recovery (cikitsa) ---- */
 enum : seL4_Word { ORG_FAULT = 0x1000, ORG_MSG = 0x2000 };          /* endpoint badges: kind | organ id */
-enum : seL4_Word { L_KEY = 1, L_READY = 2 };                        /* what an organ may say */
-enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_FALL = 0x80 };         /* bits on an organ's notification */
+enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3 };            /* what an organ may say */
+enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_FALL = 0x80 }; /* bits on an organ's notification */
 enum : uptr { ORG_TLS = 0x5000000, ORG_IPC = 0x6000000, ORG_SCRATCH = 0x10000000 };
 
 struct elf_ehdr { unsigned char ident[16]; uint16_t type, machine; uint32_t version; uint64_t entry, phoff, shoff;
@@ -496,7 +499,7 @@ struct organ
 {
 	const char *name; seL4_Word id;
 	const unsigned char *seed; unsigned long seed_len; const char *seed_sha;
-	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall;
+	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req;
 	organ_page pages[32]; unsigned npages, ncode;
 	uptr entry, scratch;
 	unsigned long gen, falls, heals, irqs, last_heal_us;
@@ -507,6 +510,8 @@ struct organ
 };
 
 static organ tvak { "Tvak", 1, TVAK_SEED, TVAK_LEN, TVAK_SHA256 };
+static organ kosa { "Kosa", 2, KOSA_SEED, KOSA_LEN, KOSA_SHA256 };
+static organ *organ_by_id(seL4_Word id) { return id == tvak.id ? &tvak : id == kosa.id ? &kosa : nullptr; }
 static uint64_t tsc_hz;                /* processor clock: from the kernel, else measured against the heart */
 static bool tsc_known;
 
@@ -529,7 +534,8 @@ static const elf_phdr *phdr(organ &o, unsigned i)
 static bool fail(organ &o, const char *step, long err) { o.step = step; o.err = err; return false; }
 
 /* give the organ its body: TCB, CSpace, VSpace, pages, and exactly the capabilities its duty needs */
-static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word irq_vector)
+enum : seL4_Word { NO_IRQ = ~0UL };
+static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word irq_vector, seL4_Word prio)
 {
 	if (!seed_ok(o)) return fail(o, "seed check", 1);
 	const elf_ehdr *e = (const elf_ehdr *)o.seed;
@@ -581,32 +587,37 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 	}
 	if ((r = map_in(o.pml4, o.ipc, ORG_IPC, seL4_ReadWrite, seL4_X86_Default_VMAttributes))) return fail(o, "IPC map", r);
 
-	/* capabilities: slot 1 faults, 2 channel out, 3 its notification, 4 its IRQ, 5 its ports. Nothing else. */
-	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot();
-	if (!o.fall) return fail(o, "slots", 7);
+	/* capabilities: slot 1 faults, 2 channel out, 3 its notification, then only what its duty needs
+	 * (4 its IRQ, 5 its ports). Nothing else. */
+	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot(); o.req = alloc_slot();
+	if (!o.req) return fail(o, "slots", 7);
 	if ((r = seL4_CNode_Mint(o.cnode, 1, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
 	                         seL4_CapRights_new(1, 0, 0, 1), ORG_FAULT | o.id)))          return fail(o, "fault channel", r);
 	if ((r = seL4_CNode_Mint(o.cnode, 2, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
 	                         seL4_CapRights_new(0, 0, 0, 1), ORG_MSG | o.id)))            return fail(o, "channel out", r);
 	if ((r = seL4_CNode_Copy(o.cnode, 3, 6, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits, seL4_CanRead)))
 		return fail(o, "its notification", r);
-	if ((r = seL4_IRQControl_GetIOAPIC(seL4_CapIRQControl, seL4_CapInitThreadCNode, irq, seL4_WordBits,
-	                                   0, irq_pin, 0 /* edge */, 0 /* active high */, irq_vector))) return fail(o, "IRQ", r);
-	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, nb, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
-	                         seL4_CanWrite, N_IRQ)))                                     return fail(o, "IRQ badge", r);
-	if ((r = seL4_IRQHandler_SetNotification(irq, nb)))                                  return fail(o, "IRQ notification", r);
-	if ((r = seL4_CNode_Copy(o.cnode, 4, 6, seL4_CapInitThreadCNode, irq, seL4_WordBits, seL4_AllRights)))
-		return fail(o, "IRQ copy", r);
-	if ((r = seL4_CNode_Copy(o.cnode, 5, 6, seL4_CapInitThreadCNode, ports, seL4_WordBits, seL4_AllRights)))
+	if (irq_pin != NO_IRQ) {
+		if ((r = seL4_IRQControl_GetIOAPIC(seL4_CapIRQControl, seL4_CapInitThreadCNode, irq, seL4_WordBits,
+		                                   0, irq_pin, 0 /* edge */, 0 /* active high */, irq_vector))) return fail(o, "IRQ", r);
+		if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, nb, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
+		                         seL4_CanWrite, N_IRQ)))                                     return fail(o, "IRQ badge", r);
+		if ((r = seL4_IRQHandler_SetNotification(irq, nb)))                                  return fail(o, "IRQ notification", r);
+		if ((r = seL4_CNode_Copy(o.cnode, 4, 6, seL4_CapInitThreadCNode, irq, seL4_WordBits, seL4_AllRights)))
+			return fail(o, "IRQ copy", r);
+		o.irq = irq;
+	}
+	if (ports && (r = seL4_CNode_Copy(o.cnode, 5, 6, seL4_CapInitThreadCNode, ports, seL4_WordBits, seL4_AllRights)))
 		return fail(o, "ports", r);
+	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.req, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
+	                         seL4_CanWrite, N_REQ)))                                     return fail(o, "request", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.pulse, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_PULSE)))                                   return fail(o, "pulse", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.fall, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_FALL)))                                    return fail(o, "fall", r);
-	o.irq = irq;
 	if ((r = seL4_TCB_Configure(o.tcb, 1, o.cnode, seL4_CNode_CapData_new(0, seL4_WordBits - 6).words[0],
 	                            o.pml4, 0, ORG_IPC, o.ipc)))                             return fail(o, "configure", r);
-	if ((r = seL4_TCB_SetPriority(o.tcb, seL4_CapInitThreadTCB, 200)))                   return fail(o, "priority", r);
+	if ((r = seL4_TCB_SetPriority(o.tcb, seL4_CapInitThreadTCB, prio)))                   return fail(o, "priority", r);
 	if ((r = seL4_TCB_SetTLSBase(o.tcb, ORG_TLS + 0x800)))                               return fail(o, "TLS base", r);
 	return true;
 }
@@ -654,8 +665,10 @@ static void organ_rest(organ &o, const char *why)
 	seL4_TCB_Suspend(o.tcb);
 	o.resting = true; o.awake = false; o.t_fall = 0;
 	colour = SAFFRON; out("  "); out(o.name); out(" rests: "); out(why); out(".\n");
-	colour = DIM; out("  Sakshi feels the keyboard itself (reflex) until you type 'heal tvak'.\n"); colour = FG;
-	reflex_on();
+	colour = DIM;
+	if (&o == &tvak) { out("  Sakshi feels the keyboard itself (reflex) until you type 'heal tvak'.\n"); reflex_on(); }
+	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : "?"); out("'.\n"); }
+	colour = FG;
 	hold_prompt = false; interject_end(); status_bar();
 }
 
@@ -673,10 +686,11 @@ static void heal_organ(organ &o)
 	if (!o.made) { out("  "); out(o.name); out(" was never made, so it cannot be healed.\n"); colour = FG; return; }
 	if (!o.resting) { out("  "); out(o.name); out(" is not resting.\n"); colour = FG; return; }
 	if (!remake(o)) { colour = RED; out("  its seed failed the SHA-256 check: not starting it.\n"); colour = FG; return; }
-	o.resting = false; reflex = false;
+	o.resting = false;
+	if (o.id == 1) reflex = false;
 	for (int i = 0; i < 4; i++) o.fell_at[i] = 0;
 	o.t_fall = rdtsc();
-	if (start(o)) { o.resting = true; reflex = true; colour = RED; out("  it could not be started.\n"); colour = FG; return; }
+	if (start(o)) { o.resting = true; if (o.id == 1) reflex = true; colour = RED; out("  it could not be started.\n"); colour = FG; return; }
 	out("  re-made from its seed (SHA-256 checked) and woken\n"); colour = FG;
 	hold_prompt = true; hold_since = beats;
 }
@@ -716,6 +730,14 @@ static void show_organs(void)
 		out("           seed: "); out_dec(tvak.seed_len); out(" bytes, SHA-256 ");
 		{ char s8[17]; memcpy(s8, tvak.seed_sha, 16); s8[16] = 0; out(s8); } out("..., checked before every start\n");
 	}
+	colour = SAFFRON; out("  Kosa     "); colour = FG; out("storehouse: reads the NVMe SSD; it can only read\n");
+	colour = DIM;
+	if (!kosa.made) out("           made only when you type 'disk'\n");
+	else {
+		out("           holds 3 capabilities, the controller's registers, 6 DMA pages, 1 window; no IRQ\n");
+		out("           "); out(kosa.resting ? "resting" : (kosa.awake ? "awake" : "healing"));
+		out(", generation "); out_dec(kosa.gen); out("; fell "); out_dec(kosa.falls); out(", healed "); out_dec(kosa.heals); out("\n");
+	}
 	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart, still inside Sakshi: PIT timer at 50 Hz, ");
 	out_dec(beats); out(" beats\n");
 }
@@ -742,6 +764,8 @@ static void clear_screen(void)
 	if (fb) fill(0, 0, fb_w, MARGIN + rows * CH, BG);
 }
 
+static void do_disk(void);
+
 static void execute(char *l)
 {
 	/* split into at most 4 words */
@@ -760,10 +784,12 @@ static void execute(char *l)
 	if (streq(w[0], "reboot")) { do_reboot(); return; }
 	if (streq(w[0], "organs")) { show_organs(); return; }
 	if (streq(w[0], "body")) { show_body(); return; }
+	if (streq(w[0], "disk")) { do_disk(); return; }
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
 	if (streq(w[0], "crash") || streq(w[0], "heal")) {
-		if (w[1] && streq(w[1], "tvak")) { if (w[0][0] == 'c') crash_organ(tvak); else heal_organ(tvak); return; }
-		colour = DIM; out("  only Tvak, for now. Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
+		organ *t = w[1] && streq(w[1], "tvak") ? &tvak : w[1] && streq(w[1], "kosa") ? &kosa : nullptr;
+		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
+		colour = DIM; out("  only the organs (tvak, kosa). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
 	}
 	if (streq(w[0], "mail")) {
@@ -878,12 +904,14 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 			interject_begin();
 			colour = GREEN; out("  "); out(o.name); out(" healed: awake again");
 			if (tsc_hz) { out(" in "); out_dec(o.last_heal_us); out(" microseconds"); }
-			out(", generation "); out_dec(o.gen); out(". Type to feel it.\n"); colour = FG;
+			out(", generation "); out_dec(o.gen); out(o.id == 1 ? ". Type to feel it.\n" : ".\n"); colour = FG;
 			hold_prompt = false; interject_end();
 		}
 		status_bar();
 	}
 }
+
+#include "kosa_host.h"
 
 static void cpu_name(char *nm)
 {
@@ -945,7 +973,7 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	setup_io();
 
 	/* the first organ: the keyboard leaves Sakshi and lives in its own compartment */
-	if (ep && kbd_port && make_organ(tvak, kbd_port, 1, 1)) {
+	if (ep && kbd_port && make_organ(tvak, kbd_port, 1, 1, 200)) {
 		if (!remake(tvak)) fail(tvak, "first image", 8);
 		else if (long r = start(tvak)) fail(tvak, "first start", r);
 		else tvak.made = true;
@@ -970,33 +998,14 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 		/* no endpoint at all: feel the keyboard by polling */
 		for (;;) { reflex_poll(); seL4_Yield(); }
 	}
-	unsigned long ticks = 0;
-	uint64_t last_beat_tsc = 0;
 	for (;;) {
 		seL4_Word badge = 0;
 		seL4_MessageInfo_t info = seL4_Recv(ep, &badge);
 		if (badge & (ORG_FAULT | ORG_MSG)) {
 			/* from an organ: the badge says which, and whether it spoke or fell */
-			if ((badge & 0xfff) != tvak.id) continue;
-			if (badge & ORG_FAULT) organ_fell(tvak, info); else organ_spoke(tvak, info);
-			continue;
-		}
-		if (badge & N_HEART) {
-			ticks++;
-			if (ticks % 50 == 0) {
-				uint64_t now = rdtsc();
-				if (last_beat_tsc && !tsc_known) tsc_hz = now - last_beat_tsc;
-				last_beat_tsc = now;
-				beats++;
-				if (hold_prompt && beats >= hold_since + 3) {
-					interject_begin(); colour = DIM; out("  no word from Tvak yet.\n"); colour = FG;
-					hold_prompt = false; interject_end();
-				}
-				status_bar();
-			}
-			seL4_IRQHandler_Ack(irq_pit);
-			if (tvak.made && tvak.awake) seL4_Signal(tvak.pulse);   /* a pulse: Tvak feels the keys even without IRQ 1 */
-			reflex_poll();
-		}
+			organ *x = organ_by_id(badge & 0xfff);
+			if (x) { if (badge & ORG_FAULT) organ_fell(*x, info); else organ_spoke(*x, info); }
+		} else if (badge & N_HEART) heart_tick();
+		drain_stash();
 	}
 }

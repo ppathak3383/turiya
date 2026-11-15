@@ -12,6 +12,10 @@ g++ $FL $INC $LD -o tvak tvak.cc
 strip -s -o tvak.seed tvak
 python3 mkseed.py tvak.seed TVAK ../sakshi/tvak_seed.h
 
+g++ $FL $INC $LD -o kosa kosa.cc
+strip -s -o kosa.seed kosa
+python3 mkseed.py kosa.seed KOSA ../sakshi/kosa_seed.h
+
 cd ../sakshi
 g++ $FL $INC -I../organs $LD -o sakshi sakshi.cc
 ls -l sakshi | awk '{print "sakshi", $5, "bytes"}'

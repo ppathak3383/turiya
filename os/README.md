@@ -9,9 +9,10 @@ Turiya's own code.
 | `sakshi/` | Sākṣī (witness) | the root task: screen, heart (50 Hz timer), the Kartr gate (`kartr_rule.h`, same code as the 36 host tests), makes and heals the organs |
 | `sakshi/sharira.h` | Śarīra (body) | read-only hardware survey (PCI, ACPI tables) and power-off |
 | `organs/tvak.cc` | Tvak (touch) | the keyboard, in its own compartment with 5 capabilities; re-made from its SHA-256-checked seed if it faults |
+| `organs/kosa.cc` | Kośa (storehouse) | the NVMe SSD, read-only by construction; made only when `disk` is typed |
 | `organs/kbd_i8042.h` | | keyboard tissue shared by Tvak and Sākṣī's reflex |
 | `stick/` | | builds the UEFI USB image |
 
-Build: `organs/build.sh` (Tvak, its seed, then Sākṣī), then `stick/build_usas.sh` (Uṣas and the image).
+Build: `organs/build.sh` (the organs, their seeds, then Sākṣī), then `stick/build_usas.sh` (Uṣas and the image).
 
 Runs: `runs/` (first light on the HP, Uṣas on the HP, Tvak in the emulator).

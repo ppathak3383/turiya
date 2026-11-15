@@ -1,0 +1,11 @@
+turiya> Turiya: ready
+disk
+  Kosa, the storehouse (it can only read: no write command exists in it)
+  controller QEMU NVMe Ctrl  firmware 8.2.2  at PCI 00:03.0
+  capacity   268 MB (524288 blocks of 512 bytes)
+  partitions (GPT):
+    1   EFI system partition          104 MB     EFI system
+    2   Microsoft reserved partition  16 MB      Microsoft reserved
+    3   Basic data partition          124 MB     basic data (Windows)
+    4   Recovery                      20 MB      Windows recovery
+turiya> 
