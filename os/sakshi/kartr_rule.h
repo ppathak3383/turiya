@@ -179,16 +179,123 @@ namespace Turiya {
 		return digits >= 6;
 	}
 
+	/*
+	 * Step 1f: disguised targets. Before matching, target and body are folded to a skeleton:
+	 * letters lowercased; Cyrillic and Greek look-alikes (a, c, e, o, p, x, ...) to Latin; Devanagari and
+	 * fullwidth digits to 0-9; the words zero..nine to digits and "at" to '@'; everything else (spaces,
+	 * line breaks, '-', '.', quotes, zero-width marks, "dot") dropped. "https://", "http://" and "www."
+	 * are dropped from the front of the target. So "98765-43210@ybl", "98765 43210 @ ybl" and
+	 * "nine eight seven six five four three two one zero at ybl" all plant 9876543210@ybl.
+	 */
+	inline bool is_alpha(char c) { c = lower(c); return c >= 'a' && c <= 'z'; }
+
+	inline char confusable(unsigned cp)
+	{
+		switch (cp) {
+		case 0x430: case 0x410: case 0x3b1: case 0x391: return 'a';
+		case 0x412: case 0x392: return 'b';
+		case 0x441: case 0x421: case 0x3f2: return 'c';
+		case 0x435: case 0x415: case 0x395: return 'e';
+		case 0x4bb: case 0x41d: case 0x397: return 'h';
+		case 0x456: case 0x406: case 0x399: case 0x3b9: return 'i';
+		case 0x458: case 0x408: return 'j';
+		case 0x41a: case 0x39a: case 0x3ba: return 'k';
+		case 0x4cf: return 'l';
+		case 0x41c: case 0x39c: return 'm';
+		case 0x39d: return 'n';
+		case 0x43e: case 0x41e: case 0x3bf: case 0x39f: return 'o';
+		case 0x440: case 0x420: case 0x3c1: case 0x3a1: return 'p';
+		case 0x455: case 0x405: return 's';
+		case 0x422: case 0x3a4: return 't';
+		case 0x3bd: return 'v';
+		case 0x445: case 0x425: case 0x3c7: case 0x3a7: return 'x';
+		case 0x443: case 0x423: case 0x3a5: return 'y';
+		case 0x396: return 'z';
+		default: return 0;
+		}
+	}
+
+	/* fold what starts at s; returns bytes consumed (>= 1), *c the skeleton character or 0 if dropped.
+	 * 'begin' is the start of the text, so words are only recognised at a word boundary. */
+	inline usize fold(char const *begin, char const *s, char *c, bool words)
+	{
+		unsigned char b0 = (unsigned char)s[0];
+		*c = 0;
+		if (b0 < 0x80) {
+			if (words && is_alpha((char)b0) && (s == begin || !is_alpha(s[-1]))) {
+				static char const *const W[] = { "zero", "one", "two", "three", "four", "five", "six",
+				                                  "seven", "eight", "nine", "at", "dot", nullptr };
+				for (unsigned w = 0; W[w]; w++) {
+					usize n = 0;
+					while (W[w][n] && lower(s[n]) == W[w][n]) n++;
+					if (W[w][n] || is_alpha(s[n])) continue;
+					*c = w < 10 ? (char)('0' + w) : (w == 10 ? '@' : 0);
+					return n;
+				}
+			}
+			char l = lower((char)b0);
+			if ((l >= 'a' && l <= 'z') || (l >= '0' && l <= '9') || l == '@') *c = l;
+			return 1;
+		}
+		unsigned char b1 = (unsigned char)s[1], b2 = b1 ? (unsigned char)s[2] : 0;
+		if ((b0 & 0xe0) == 0xc0 && (b1 & 0xc0) == 0x80) {
+			*c = confusable((b0 & 0x1fu) << 6 | (b1 & 0x3fu));
+			return 2;
+		}
+		if ((b0 & 0xf0) == 0xe0 && (b1 & 0xc0) == 0x80 && (b2 & 0xc0) == 0x80) {
+			unsigned cp = (b0 & 0x0fu) << 12 | (b1 & 0x3fu) << 6 | (b2 & 0x3fu);
+			if (cp >= 0x966 && cp <= 0x96f)        *c = (char)('0' + (cp - 0x966));    /* Devanagari digits */
+			else if (cp >= 0xff10 && cp <= 0xff19) *c = (char)('0' + (cp - 0xff10));   /* fullwidth digits */
+			else if (cp >= 0xff21 && cp <= 0xff3a) *c = (char)('a' + (cp - 0xff21));   /* fullwidth A-Z */
+			else if (cp >= 0xff41 && cp <= 0xff5a) *c = (char)('a' + (cp - 0xff41));   /* fullwidth a-z */
+			else if (cp == 0xff20)                 *c = '@';
+			return 3;
+		}
+		return 1;
+	}
+
 	inline bool target_from_outside(char const *target, char const *outside)
 	{
 		if (!outside || !*target || !entity_like(target)) return false;
 		char const *body = outside;
 		while (*body && *body != '\n') body++;          /* skip the source line */
+
+		/* the plain match, as in step 1e */
 		usize const n = slen(target);
 		for (char const *p = body; *p; p++) {
 			usize i = 0;
 			while (i < n && p[i] && lower(p[i]) == lower(target[i])) i++;
 			if (i == n) return true;
+		}
+
+		/* the skeleton match */
+		char const *t = target;
+		static char const *const PREFIX[] = { "https://", "http://", "www.", nullptr };
+		for (bool again = true; again; ) {
+			again = false;
+			for (unsigned k = 0; PREFIX[k]; k++) {
+				usize j = 0;
+				while (PREFIX[k][j] && lower(t[j]) == PREFIX[k][j]) j++;
+				if (!PREFIX[k][j]) { t += j; again = true; }
+			}
+		}
+		char sk[FIELD_MAX + 1]; usize m = 0;
+		for (char const *p = t; *p && m < FIELD_MAX; ) { char c; p += fold(t, p, &c, false); if (c) sk[m++] = c; }
+		if (m < 5) return false;                        /* too little left to call it the same target */
+
+		for (char const *p = body; *p; ) {
+			char c; usize step = fold(body, p, &c, true);
+			if (c == sk[0]) {
+				char const *q = p + step; usize i = 1;
+				while (*q && i < m) {
+					char d; q += fold(body, q, &d, true);
+					if (!d) continue;
+					if (d != sk[i]) break;
+					i++;
+				}
+				if (i == m) return true;
+			}
+			p += step;
 		}
 		return false;
 	}

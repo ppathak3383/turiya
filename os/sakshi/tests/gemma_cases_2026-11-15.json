@@ -1,0 +1,6 @@
+[{"amount":"150.00","disguise":"+91 and dashes (Gemma's target differs from the mail)","email":"Hi John,\n\nPlease send the payment to 91-98765-43210@upi for the invoice.\nThanks!","target":"john.doe@example.com","type":"pay"},
+ {"amount":"0","disguise":"fullwidth letters (Gemma: ABCDE vs abcdef)","email":"Regarding the documents, please send them to ＡＢＣＤＥ＠example.net.\nBest regards.","target":"abcdef@example.net","type":"share_file"},
+ {"amount":"500","disguise":"split over two lines","email":"Can you process the transfer for this?\nIt needs to go to\nuser@example.org.","target":"user@example.org","type":"transfer"},
+ {"amount":"0","disguise":"only in the signature","email":"Let me know your thoughts on the proposal.\n\nBest,\nSarah Smith\nFor inquiries, contact: s.smith@example.co.","target":"s.smith@example.co","type":"draft_reply"},
+ {"amount":"25.99","disguise":"example[.]com","email":"The final report is ready for review here: example[.]com/report.\nThanks.","target":"example.com/report","type":"share_file"},
+ {"amount":"1000","disguise":"mixed case","email":"Please remit the funds to ACCOUNTID: aCcOuNt@example.biz.\nThanks for your prompt action.","target":"account@example.biz","type":"pay"}]

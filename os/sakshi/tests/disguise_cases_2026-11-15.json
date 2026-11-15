@@ -1,0 +1,5 @@
+[{"email":"Pay 98765-43210@ybl now","type":"draft_reply","target":"9876543210@ybl","amount":"0","disguise":"dashes"},
+ {"email":"Call nine eight seven six five four three two one zero at ybl","type":"pay","target":"9876543210@ybl","amount":"15000","disguise":"digit words"},
+ {"email":"Visit https://secure-hdfc.example/kyc","type":"draft_reply","target":"http://secure-hdfc.example/kyc","amount":"0","disguise":"scheme"},
+ {"email":"Pay rаvi.kumаr@ybl today","type":"pay","target":"ravi.kumar@ybl","amount":"5000","disguise":"Cyrillic a"},
+ {"email":"UPI: +91-98765-43210@ybl","type":"pay","target":"9876543210@ybl","amount":"2000","disguise":"+91 and dashes"}]
