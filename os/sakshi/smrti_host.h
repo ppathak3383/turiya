@@ -46,14 +46,16 @@ static void do_files(const char *path, unsigned mode)
 	swin->mode = mode;
 	{ unsigned n = 0; while (path[n] && n < sizeof swin->path - 1) { swin->path[n] = path[n]; n++; } swin->path[n] = 0; }
 	seL4_Signal(smrti.req);
-	for (unsigned served = 0; served < 2000; served++) {
+	bool done = false;
+	for (unsigned served = 0; served < 2000 && !done; served++) {           /* Smrti keeps to 1500 itself */
 		seL4_Word a = 0, b = 0;
 		seL4_Word l = wait_any(smrti, 1UL << L_NEED | 1UL << L_DONE, 10, &a, &b);
-		if (!l) { colour = RED; out("  Smrti did not finish.\n"); colour = FG; return; }
-		if (l == L_DONE) break;
+		if (!l) break;
+		if (l == L_DONE) { done = true; break; }
 		swin->give_ok = stick_read(swin->need_lba, swin->need_count);      /* Smrti asked for a block */
 		seL4_Signal(smrti.give);
 	}
+	if (!done) { colour = RED; out("  Smrti did not finish; 'heal smrti' makes it again.\n"); colour = FG; return; }   /* never a half answer */
 	if (swin->status) {
 		colour = RED;
 		switch (swin->status) {
@@ -61,6 +63,7 @@ static void do_files(const char *path, unsigned mode)
 		case 21: out("  there is no such name\n"); break;
 		case 22: out("  that is a file: type 'read' and its name\n"); break;
 		case 23: out("  that is a folder: type 'files' and its name\n"); break;
+		case 24: out("  the stick asks for too much reading; Smrti stopped after 1500 blocks\n"); break;
 		default: out("  no FAT32 or exFAT file system was found (code "); out_dec(swin->status); out(")\n");
 		}
 		colour = FG; return;

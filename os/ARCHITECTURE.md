@@ -62,3 +62,16 @@ without a key); **suṣupti**, deep sleep, nothing acts; **turīya**, the witnes
 - Organs poll instead of taking interrupts (keyboard excepted); fine for now, costs a little power.
 - No writes anywhere yet, by design: nothing is saved between starts.
 - The touchpad (I2C-HID) and the network are not there yet.
+
+## Read-only, proved (15 Nov 2026, night)
+
+Kosa and Nadi each have one road to their device: `submit()` in `organs/kosa_cmd.h`, `scsi()` in
+`organs/nadi_scsi.h`. Both files are shared unchanged by the organ and by its CBMC proof (`organs/proofs/`).
+The proofs show that, for every command any caller could build and every request Sakshi or Smrti could make:
+only reads leave, only into the one data page, never more than a page, exactly the blocks asked for, inside
+the device. Static checks show these functions are the only roads. Smrti (`organs/smrti_fs.h`) and Vibhaga, the
+partition-table reader (`sakshi/vibhaga.h`), read outside content. Both are fuzzed with AddressSanitizer and
+UndefinedBehaviorSanitizer, and Smrti keeps a budget of 1500 blocks per request.
+
+Healing: when an organ falls, Sakshi re-makes and restarts it first and writes the report after, so recovery
+never waits for the screen.

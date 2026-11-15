@@ -1,0 +1,121 @@
+Sakshi is awake. I hold the screen, the gate and my own breath; the heart and the keyboard are organs.
+
+  kernel      seL4 13.0.0 (x86-64), the only inherited code
+  processor   Intel Core Processor (Skylake)
+  memory      999 MiB handed to Sakshi
+  screen      2048 x 2048 at 0x80000000
+  untyped     129 regions
+  devices     heart: Hrdaya, its own organ; breath: RTC 2 Hz; keyboard held by Tvak, its own organ
+
+Kartr gate, 15 test actions (rule code identical to the host tests)
+  [a1] allowed: summarise inbox 0
+  [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+  [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+  [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+  [a5] held_approval_mismatch: pay evil@ybl 15000
+  [a6] held_needs_approval: delete Turiya/phase0/runs 0
+  [a7] allowed: draft_reply sender 0
+  [a8] held_approval_mismatch: share_file Form16 0
+  [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+  [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+  [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.. 15000
+  [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+  [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+  [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+  [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+  kartr_gate: 4 allowed, 11 held; two judges (the C++ rule, the Verus-proved decision) agreed 15 of 15
+
+Nothing here can pay, send or delete: the gate only decides. Type 'help'.
+
+turiya> Turiya: ready
+disk
+  Kosa, the storehouse (it can only read: no write command exists in it)
+  controller QEMU NVMe Ctrl  firmware 8.2.2  at PCI 00:04.0
+  capacity   268 MB (524288 blocks of 512 bytes)
+  partitions (GPT):
+    1   EFI system partition          104 MB     EFI system
+    2   Microsoft reserved partition  16 MB      Microsoft reserved
+    3   Basic data partition          124 MB     basic data (Windows)
+    4   Recovery                      20 MB      Windows recovery
+turiya> usb
+  Nadi, the channel (USB: finds what is plugged in; listens to a USB keyboard)
+  Nadi  xHCI 0x100 at PCI 00:03.0, 8 ports, 64 slots, 0 scratchpad pages
+    port 1   storage               46f4:0001  super speed  <- type 'stick' to read it
+turiya> files
+  Smrti reads the files (FAT32 or exFAT; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, top folder: 3 entries
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+turiya> crash tvak
+  asking Tvak to write to the screen at 0x8000000000, which only Sakshi holds
+  Tvak fell: it touched memory it does not hold (ip 0x4012b9, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Tvak healed: awake again in 1038 microseconds, generation 2. Type to feel it.
+turiya> crash kosa
+  asking Kosa to write to the screen at 0x8000000000, which only Sakshi holds
+  Kosa fell: it touched memory it does not hold (ip 0x4017b8, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Kosa healed: awake again in 2010 microseconds, generation 2.
+turiya> crash nadi
+  asking Nadi to write to the screen at 0x8000000000, which only Sakshi holds
+  Nadi fell: it touched memory it does not hold (ip 0x40319c, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Nadi healed: awake again in 103951 microseconds, generation 2.
+turiya> crash smrti
+  asking Smrti to write to the screen at 0x8000000000, which only Sakshi holds
+  Smrti fell: it touched memory it does not hold (ip 0x401c51, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Smrti healed: awake again in 862 microseconds, generation 2.
+turiya> crash hrdaya
+  asking Hrdaya to write to the screen at 0x8000000000, which only Sakshi holds
+  Hrdaya fell: it touched memory it does not hold (ip 0x401248, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Hrdaya healed: awake again in 485 microseconds, generation 2.
+turiya> stop hrdaya
+  asking Hrdaya to go silent without falling; the breath should notice
+  Hrdaya stopped: no beat for 2 seconds, seen by the breath
+  re-made from its seed (SHA-256 checked) and started again
+  Hrdaya healed: awake again in 55693 microseconds, generation 3.
+turiya> files
+  Smrti reads the files (FAT32 or exFAT; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, top folder: 3 entries
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+turiya> disk
+  Kosa, the storehouse (it can only read: no write command exists in it)
+  controller QEMU NVMe Ctrl  firmware 8.2.2  at PCI 00:04.0
+  capacity   268 MB (524288 blocks of 512 bytes)
+  partitions (GPT):
+    1   EFI system partition          104 MB     EFI system
+    2   Microsoft reserved partition  16 MB      Microsoft reserved
+    3   Basic data partition          124 MB     basic data (Windows)
+    4   Recovery                      20 MB      Windows recovery
+turiya> organs
+  Sakshi   witness: the screen, the gate and your approvals
+           holds what seL4 gave at boot; makes the organs and heals them
+  Tvak     touch: key presses into characters for Sakshi
+           holds ports 0x60-0x64, IRQ 1, one channel out, 7 pages (3 read-only), TLS, IPC buffer
+           awake, generation 2; fell 1, healed 1 (last in 1038 us)
+           seed: 9280 bytes, SHA-256 1f1d8f392812c4f5..., checked before every start
+  Kosa     storehouse: reads the NVMe SSD; it can only read
+           holds 3 capabilities, the controller's registers, 6 DMA pages, 1 window; no IRQ
+           awake, generation 2; fell 1, healed 1
+  Nadi     channel: the USB controller; names devices, listens to a USB keyboard
+           Nadi: 3 capabilities, its controller's registers, 112 DMA pages, 1 window; no IRQ
+           awake, generation 2; fell 1, healed 1; keys typed 0
+  Smrti    memory: reads a FAT32 file system; it touches no device, Sakshi fetches blocks
+           holds 3 capabilities, a read-only view of the stick's data page, 1 window
+           awake, generation 2; fell 1, healed 1
+  Hrdaya   heart: the PIT timer at 50 Hz, one signal to Sakshi per tick
+           holds ports 0x40-0x43, IRQ 0, one signal into Sakshi; 101 beats
+           awake, generation 3; fell or stopped 2, healed 2
+  Prana    breath, Sakshi's own: the RTC at 2 Hz, it watches the heart
+           208 breaths
+turiya> 

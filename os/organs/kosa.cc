@@ -5,10 +5,11 @@
  * Svadharma, its one duty: read blocks from the disk when Sakshi asks, into one shared page.
  *
  * Maryada, its limits:
- *   - READ-ONLY BY CONSTRUCTION. The only I/O command it can build is Read (opcode 0x02), and every I/O
- *     submission is checked again just before the doorbell. On the admin queue it can only Identify (0x06)
- *     and create its one I/O queue pair (0x05, 0x01). No write, format, sanitize, firmware or feature
- *     command exists anywhere in this program.
+ *   - READ-ONLY BY CONSTRUCTION. The only I/O command it can build is Read (opcode 0x02), at most one page,
+ *     into its data page. On the admin queue it can only Identify (0x06) and create its one I/O queue pair
+ *     (0x05, 0x01). One gate (allowed, in kosa_cmd.h) checks every command twice, the second time in place
+ *     just before the doorbell; a machine-checked proof shows nothing else can be released. No write,
+ *     format, sanitize, firmware or feature command exists anywhere in this program.
  *   - Capabilities: 1 fault channel, 2 send-only channel to Sakshi, 3 its notification. Nothing else.
  *   - Memory: its own pages, the controller's first 16 KB of registers (uncached), six DMA pages and one
  *     window page shared with Sakshi. No interrupts: it polls, with time limits from the processor clock.
@@ -48,7 +49,6 @@ static uint64_t rdtsc(void) { uint32_t lo, hi; __asm__ volatile ("rdtsc" : "=a"(
 
 static KosaWindow *const W = (KosaWindow *)KOSA_WINDOW_VA;
 static volatile uint8_t *R;                 /* controller registers */
-static unsigned dstrd;
 
 static uint32_t r32(unsigned off) { return *(volatile uint32_t *)(R + off); }
 static uint64_t r64(unsigned off) { return (uint64_t)r32(off) | (uint64_t)r32(off + 4) << 32; }
@@ -67,46 +67,10 @@ static bool wait_csts(uint32_t mask, uint32_t want, uint64_t ms)
 	return true;
 }
 
-struct Sqe { uint32_t cdw0, nsid, rsvd2, rsvd3; uint64_t mptr, prp1, prp2; uint32_t cdw10, cdw11, cdw12, cdw13, cdw14, cdw15; };
-struct Cqe { uint32_t dw0, dw1; uint16_t sqhd, sqid, cid, status; };
-static_assert(sizeof(Sqe) == 64 && sizeof(Cqe) == 16, "NVMe entry sizes");
+[[noreturn]] static void fall(void) { *(volatile uint32_t *)0 = 0; __builtin_trap(); }   /* refuse by falling */
+static void cpu_relax(void) { __asm__ volatile ("pause"); }
 
-enum { QN = 64 };                          /* entries per queue */
-struct Queue { volatile Sqe *sq; volatile Cqe *cq; unsigned tail, head, phase, qid; uint16_t cid; };
-static Queue adminq, ioq;
-
-static unsigned sq_doorbell(unsigned qid) { return 0x1000 + (2 * qid) * (4u << dstrd); }
-static unsigned cq_doorbell(unsigned qid) { return 0x1000 + (2 * qid + 1) * (4u << dstrd); }
-
-/* the only way a command reaches the controller */
-static int submit(Queue &q, Sqe const &e, uint32_t *dw0)
-{
-	uint8_t opc = (uint8_t)e.cdw0;
-	if (q.qid == 0 ? !(opc == 0x06 || opc == 0x05 || opc == 0x01) : opc != 0x02)
-		*(volatile uint32_t *)0 = 0;               /* not a read: refuse by falling, never by sending */
-	uint16_t cid = ++q.cid;
-	volatile Sqe *s = &q.sq[q.tail];
-	s->cdw0 = (uint32_t)opc | (uint32_t)cid << 16; s->nsid = e.nsid; s->rsvd2 = 0; s->rsvd3 = 0;
-	s->mptr = 0; s->prp1 = e.prp1; s->prp2 = 0;
-	s->cdw10 = e.cdw10; s->cdw11 = e.cdw11; s->cdw12 = e.cdw12; s->cdw13 = 0; s->cdw14 = 0; s->cdw15 = 0;
-	if (q.qid != 0 && (uint8_t)s->cdw0 != 0x02) *(volatile uint32_t *)0 = 0;   /* checked again in place */
-	q.tail = (q.tail + 1) % QN;
-	w32(sq_doorbell(q.qid), q.tail);
-	uint64_t t0 = rdtsc(), limit = (W->tsc_hz ? W->tsc_hz : 3000000000ULL) * 2;   /* 2 seconds */
-	for (;;) {
-		volatile Cqe *c = &q.cq[q.head];
-		if ((c->status & 1) == q.phase) {
-			uint16_t st = (uint16_t)(c->status >> 1);
-			if (dw0) *dw0 = c->dw0;
-			q.head = (q.head + 1) % QN;
-			if (!q.head) q.phase ^= 1;
-			w32(cq_doorbell(q.qid), q.head);
-			return st ? 0x1000 | st : 0;
-		}
-		if (rdtsc() - t0 > limit) return 0x2000;      /* timed out */
-		__asm__ volatile ("pause");
-	}
-}
+#include "kosa_cmd.h"                       /* the queues, the gate (allowed) and the read: shared with the proof */
 
 static void copy_text(char *d, volatile uint8_t const *s, unsigned n)
 {
@@ -161,15 +125,6 @@ static uint32_t init(void)
 	e = {}; e.cdw0 = 0x01; e.prp1 = W->pa[KOSA_IOSQ]; e.cdw10 = (QN - 1) << 16 | 1; e.cdw11 = 1u << 16 | 1;  /* I/O SQ 1 */
 	if (uint32_t st = submit(adminq, e, 0)) return 0x40000 | st;
 	return 0;
-}
-
-static uint32_t read_blocks(uint64_t lba, uint32_t count)
-{
-	if (!count || count * W->block_size > 4096 || lba + count > W->blocks) return 8;
-	Sqe e {};
-	e.cdw0 = 0x02; e.nsid = 1; e.prp1 = W->pa[KOSA_DATA];
-	e.cdw10 = (uint32_t)lba; e.cdw11 = (uint32_t)(lba >> 32); e.cdw12 = count - 1;
-	return submit(ioq, e, 0);
 }
 
 extern "C" void kosa_main(seL4_Word gen, seL4_Word ipc)

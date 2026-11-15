@@ -1,0 +1,13 @@
+vacuity A (must fail)                                FAILED    [main.assertion.1] line 123 assertion !(released == 1 && q.qid != 0): FAILURE
+vacuity B (must fail)                                FAILED    [main.assertion.3] line 138 assertion !reasonable: FAILURE
+M1 the code before tonight (32-bit overflow)         FAILED    [check_release.assertion.7] line 62 assertion (s->cdw12 >> 16) == 0: FAILURE
+M2 page check off by one                             FAILED    [check_release.assertion.8] line 64 assertion W->block_size >= 512 && bytes <= 4096: FAILURE
+M3 doorbell releases two entries                     FAILED    [check_release.assertion.2] line 53 assertion v == (tail0 + 1) % QN: FAILURE
+M4 admin accepts Set Features (0x09)                 FAILED    [check_release.assertion.12] line 72 assertion opc == 0x06 || opc == 0x05 || opc == 0x01: FAILURE
+M5 fused commands let through                        FAILED    [check_release.assertion.3] line 57 assertion ((cdw0 >> 8) & 0xff) == 0: FAILURE
+M6 last block plus one                               FAILED    [check_release.assertion.11] line 69 assertion slba < W->blocks && nlb < W->blocks - slba: FAILURE
+M7 Create CQ without physically contiguous           FAILED    [check_release.assertion.16] line 74 assertion s->cdw11 & 1: FAILURE
+K1 first check removed: the second alone holds       VERIFIED  
+K2 second check removed: the first alone holds       VERIFIED  
+
+[exited with code 0]

@@ -1,0 +1,145 @@
+Sakshi is awake. I hold the screen, the gate and my own breath; the heart and the keyboard are organs.
+
+  kernel      seL4 13.0.0 (x86-64), the only inherited code
+  processor   Intel Core Processor (Skylake)
+  memory      999 MiB handed to Sakshi
+  screen      2048 x 2048 at 0x80000000
+  untyped     129 regions
+  devices     heart: Hrdaya, its own organ; breath: RTC 2 Hz; keyboard held by Tvak, its own organ
+
+Kartr gate, 15 test actions (rule code identical to the host tests)
+  [a1] allowed: summarise inbox 0
+  [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+  [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+  [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+  [a5] held_approval_mismatch: pay evil@ybl 15000
+  [a6] held_needs_approval: delete Turiya/phase0/runs 0
+  [a7] allowed: draft_reply sender 0
+  [a8] held_approval_mismatch: share_file Form16 0
+  [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+  [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+  [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.. 15000
+  [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+  [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+  [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+  [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+  kartr_gate: 4 allowed, 11 held; two judges (the C++ rule, the Verus-proved decision) agreed 15 of 15
+
+Nothing here can pay, send or delete: the gate only decides. Type 'help'.
+
+turiya> Turiya: ready
+files
+  Smrti reads the files (FAT32 or exFAT; it only reads, and only through Nadi)
+  volume     TURIYAEX  exFAT at block 2048, top folder: 2 entries
+    Readme.txt                              28 bytes  
+    Docs                                    folder
+turiya> help
+  help                     this list
+  check                    one screen on this machine and Turiya (reads only; for one photo)
+  about                    what is running, on what
+  organs                   the parts of Turiya: duty, what each holds, health
+  body                     the hardware Turiya found (read-only survey)
+  disk                     read the SSD's partition table (Kosa; it can only read)
+  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)
+  stick                    read a USB stick's partition table (only read commands exist)
+  files [folder]           the files on a USB stick (FAT32 or exFAT, read by Smrti)
+  read <file>              the start of a file on the stick, as text
+  gate                     run the 15 test actions again
+  mail                     the sample email the gate guards against
+  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000
+                           summarise inbox    draft_reply papa    delete photos
+  approve                  approve the last held action (only from this keyboard)
+  log                      the witness log of this session
+  state [jagrat|svapna|susupti]  waking, dreaming, deep sleep: what may act
+  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)
+  stop hrdaya              make the heart go silent; the breath notices and restarts it
+  heal <organ>             wake an organ again if it is resting
+  clear                    clear the screen
+  reboot                   restart the machine (pull the stick for Windows)
+  poweroff                 switch the machine off
+turiya> help
+  help                     this list
+  check                    one screen on this machine and Turiya (reads only; for one photo)
+  about                    what is running, on what
+  organs                   the parts of Turiya: duty, what each holds, health
+  body                     the hardware Turiya found (read-only survey)
+  disk                     read the SSD's partition table (Kosa; it can only read)
+  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)
+  stick                    read a USB stick's partition table (only read commands exist)
+  files [folder]           the files on a USB stick (FAT32 or exFAT, read by Smrti)
+  read <file>              the start of a file on the stick, as text
+  gate                     run the 15 test actions again
+  mail                     the sample email the gate guards against
+  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000
+                           summarise inbox    draft_reply papa    delete photos
+  approve                  approve the last held action (only from this keyboard)
+  log                      the witness log of this session
+  state [jagrat|svapna|susupti]  waking, dreaming, deep sleep: what may act
+  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)
+  stop hrdaya              make the heart go silent; the breath notices and restarts it
+  heal <organ>             wake an organ again if it is resting
+  clear                    clear the screen
+  reboot                   restart the machine (pull the stick for Windows)
+  poweroff                 switch the machine off
+turiya> help
+  help                     this list
+  check                    one screen on this machine and Turiya (reads only; for one photo)
+  about                    what is running, on what
+  organs                   the parts of Turiya: duty, what each holds, health
+  body                     the hardware Turiya found (read-only survey)
+  disk                     read the SSD's partition table (Kosa; it can only read)
+  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)
+  stick                    read a USB stick's partition table (only read commands exist)
+  files [folder]           the files on a USB stick (FAT32 or exFAT, read by Smrti)
+  read <file>              the start of a file on the stick, as text
+  gate                     run the 15 test actions again
+  mail                     the sample email the gate guards against
+  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000
+                           summarise inbox    draft_reply papa    delete photos
+  approve                  approve the last held action (only from this keyboard)
+  log                      the witness log of this session
+  state [jagrat|svapna|susupti]  waking, dreaming, deep sleep: what may act
+  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)
+  stop hrdaya              make the heart go silent; the breath notices and restarts it
+  heal <organ>             wake an organ again if it is resting
+  clear                    clear the screen
+  reboot                   restart the machine (pull the stick for Windows)
+  poweroff                 switch the machine off
+turiya> help
+  help                     this list
+  check                    one screen on this machine and Turiya (reads only; for one photo)
+  about                    what is running, on what
+  organs                   the parts of Turiya: duty, what each holds, health
+  body                     the hardware Turiya found (read-only survey)
+  disk                     read the SSD's partition table (Kosa; it can only read)
+  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)
+  stick                    read a USB stick's partition table (only read commands exist)
+  files [folder]           the files on a USB stick (FAT32 or exFAT, read by Smrti)
+  read <file>              the start of a file on the stick, as text
+  gate                     run the 15 test actions again
+  mail                     the sample email the gate guards against
+  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000
+                           summarise inbox    draft_reply papa    delete photos
+  approve                  approve the last held action (only from this keyboard)
+  log                      the witness log of this session
+  state [jagrat|svapna|susupti]  waking, dreaming, deep sleep: what may act
+  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)
+  stop hrdaya              make the heart go silent; the breath notices and restarts it
+  heal <organ>             wake an organ again if it is resting
+  clear                    clear the screen
+  reboot                   restart the machine (pull the stick for Windows)
+  poweroff                 switch the machine off
+turiya> crash smrti
+  asking Smrti to write to the screen at 0x8000000000, which only Sakshi holds
+  Smrti fell: it touched memory it does not hold (ip 0x401c51, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Smrti healed: awake again in 1120 microseconds, generation 2.
+turiya> clear
+turiya> crash smrti
+  asking Smrti to write to the screen at 0x8000000000, which only Sakshi holds
+  Smrti fell: it touched memory it does not hold (ip 0x401c51, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Smrti healed: awake again in 466 microseconds, generation 3.
+turiya> 

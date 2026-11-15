@@ -1,0 +1,10 @@
+vacuity C (must fail)                                FAILED    [main.assertion.1] line 116 assertion outs == 0: FAILURE
+vacuity D (must fail)                                FAILED    [main.assertion.3] line 130 assertion !reasonable: FAILURE
+N1 the code before tonight (32-bit overflow)         FAILED    [bulk.assertion.9] line 69 assertion n == 10 && blocks >= 1: FAILURE
+N2 WRITE(10) let through                             FAILED    [bulk.assertion.4] line 62 assertion op == 0x00 || op == 0x03 || op == 0x12 || op == 0x25 || op == 0x28: FAILURE
+N3 direction OUT with data                           FAILED    [bulk.assertion.8] line 66 assertion flags == (dlen ? 0x80 : 0x00): FAILURE
+N4 READ length not matched to the page               FAILED    [bulk.assertion.10] line 70 assertion blocks * (uint64_t)W->storage_block_size == dlen: FAILURE
+N5 no end-of-stick check                             FAILED    [bulk.assertion.11] line 73 assertion lba == req_lba && blocks == req_count: FAILURE
+N6 more than a page                                  FAILED    [bulk.assertion.7] line 65 assertion dlen <= 4096: FAILURE
+K3 first check removed: the second alone holds       VERIFIED  
+K4 second check removed: the first alone holds       VERIFIED  

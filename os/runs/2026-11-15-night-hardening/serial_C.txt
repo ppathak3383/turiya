@@ -1,0 +1,46 @@
+Sakshi is awake. I hold the screen, the gate and my own breath; the heart and the keyboard are organs.
+
+  kernel      seL4 13.0.0 (x86-64), the only inherited code
+  processor   Intel Core Processor (Skylake)
+  memory      999 MiB handed to Sakshi
+  screen      2048 x 2048 at 0x80000000
+  untyped     129 regions
+  devices     heart: Hrdaya, its own organ; breath: RTC 2 Hz; keyboard held by Tvak, its own organ
+
+Kartr gate, 15 test actions (rule code identical to the host tests)
+  [a1] allowed: summarise inbox 0
+  [a2] held_needs_approval: pay ramesh.kumar@ybl 15000
+  [a3] allowed_with_approval: pay ramesh.kumar@ybl 15000
+  [a4] held_approval_mismatch: pay ramesh.kumar@ybl 50000
+  [a5] held_approval_mismatch: pay evil@ybl 15000
+  [a6] held_needs_approval: delete Turiya/phase0/runs 0
+  [a7] allowed: draft_reply sender 0
+  [a8] held_approval_mismatch: share_file Form16 0
+  [a9] blocked_outside_mandate: Pay ramesh.kumar@ybl 15000
+  [a10] blocked_outside_mandate: open_link kyc.example/verify 0
+  [a11] held_bad_input: pay aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.. 15000
+  [a12] held_approval_mismatch: transfer ramesh.kumar@ybl 15000
+  [a13] allowed: draft_reply alerts@hdfcbank-kyc.example 0
+  [a14] held_target_from_outside_content: draft_reply kyc-desk@okaxis 0
+  [a15] held_target_from_outside_content: pay 9876543210@ybl 15000
+  kartr_gate: 4 allowed, 11 held; two judges (the C++ rule, the Verus-proved decision) agreed 15 of 15
+
+Nothing here can pay, send or delete: the gate only decides. Type 'help'.
+
+turiya> Turiya: ready
+check
+  check (reads only; the internal SSD is not touched)
+  Turiya     heart 3 beats, breath 6; Tvak awake (by interrupt); judges agreed 15/15
+  processor  Intel Core Processor (Skylake), 999 MiB, 2048x2048
+  PCI        8 functions: display 00:02.0 QEMU; USB3 00:03.0 QEMU;
+              USB3 00:04.0 QEMU; NVMe 00:05.0 QEMU;
+  ACPI       XSDT, 5 tables; power-off ready (PM1a 0xb004, type 0)
+  USB Nadi   8 ports, 0 scratchpads; nothing plugged in
+  USB Nadi2  8 ports, 0 scratchpads; port 1 storage;
+  Smrti reads the files (FAT32 or exFAT; it only reads, and only through Nadi)
+  volume     TURIYATEST   FAT32    at block 2048, top folder: 3 entries
+    HELLO.TXT                               21 bytes  
+    Photos                                  folder
+    Notes for later.txt                     21 bytes  
+  Take one photo of this screen. 'disk' (the internal SSD) waits for your yes.
+turiya> 

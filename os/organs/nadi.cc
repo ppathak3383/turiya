@@ -9,7 +9,8 @@
  * Maryada, its limits: 1 fault channel, 2 send-only channel to Sakshi, 3 its notification. The controller's
  * registers (uncached), 48 DMA pages and one window shared with Sakshi. No interrupts: it polls on Sakshi's
  * pulse. It never sends data OUT to a device except the standard set-up requests (set configuration, set
- * protocol, set idle), which carry no data. It never touches a storage device's data.
+ * protocol, set idle), which carry no data, and a stick's command blocks, which can only ask to read: all a
+ * stick can be told is in nadi_scsi.h, checked twice before it leaves, with a machine-checked proof.
  *
  * Cikitsa: if it faults, Sakshi re-makes it from its seed; it resets the controller and starts again.
  * Known gap: without an IOMMU a confused controller could DMA anywhere (no AMD IOMMU support in seL4 yet).
@@ -192,7 +193,6 @@ struct Msc { unsigned slot; uint8_t in_dci, out_dci; Ring in, out; uint32_t tag;
 static Msc msc;
 
 static uint32_t be32(volatile uint8_t const *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
-static void le32(volatile uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
 
 static int bulk(Ring &r, uint8_t dci, uint64_t pa, uint32_t len)
 {
@@ -203,57 +203,31 @@ static int bulk(Ring &r, uint8_t dci, uint64_t pa, uint32_t len)
 	return cc == 1 || cc == 13 ? 0 : (cc < 0 ? 0x100 : cc);
 }
 
-/* the only way a command reaches the stick: TEST UNIT READY, REQUEST SENSE, INQUIRY, READ CAPACITY(10), READ(10) */
-static int scsi(uint8_t const *cdb, unsigned cdblen, uint32_t inlen, uint64_t data_pa)
-{
-	uint8_t op = cdb[0];
-	if (!(op == 0x00 || op == 0x03 || op == 0x12 || op == 0x25 || op == 0x28))
-		*(volatile uint32_t *)0 = 0;                               /* not a read: refuse by falling, never by sending */
-	volatile uint8_t *cbw = buf.va + 0x100, *csw = buf.va + 0x200;
-	for (int i = 0; i < 31; i++) cbw[i] = 0;
-	le32(cbw, 0x43425355); le32(cbw + 4, ++msc.tag); le32(cbw + 8, inlen);
-	cbw[12] = inlen ? 0x80 : 0; cbw[14] = (uint8_t)cdblen;
-	for (unsigned i = 0; i < cdblen; i++) cbw[15 + i] = cdb[i];
-	if (cbw[15] != 0x00 && cbw[15] != 0x03 && cbw[15] != 0x12 && cbw[15] != 0x25 && cbw[15] != 0x28)
-		*(volatile uint32_t *)0 = 0;                               /* checked again in place */
-	if (bulk(msc.out, msc.out_dci, buf.pa + 0x100, 31)) return 0x10;
-	if (inlen && bulk(msc.in, msc.in_dci, data_pa, inlen)) return 0x20;
-	if (bulk(msc.in, msc.in_dci, buf.pa + 0x200, 13)) return 0x30;
-	uint32_t sig = csw[0] | csw[1] << 8 | csw[2] << 16 | (uint32_t)csw[3] << 24;
-	uint32_t tag = csw[4] | csw[5] << 8 | csw[6] << 16 | (uint32_t)csw[7] << 24;
-	if (sig != 0x53425355 || tag != msc.tag) return 0x40;
-	return csw[12];                                                /* 0: passed */
-}
+[[noreturn]] static void fall(void) { *(volatile uint32_t *)0 = 0; __builtin_trap(); }   /* refuse by falling */
+
+#include "nadi_scsi.h"                      /* scsi() and storage_read(): what a stick can be told, shared with the proof */
 
 static void storage_start(void)
 {
 	volatile uint8_t *d = (volatile uint8_t *)W->va[NADI_DATA];
 	uint8_t inq[6] = { 0x12, 0, 0, 0, 36, 0 };
-	if (int r = scsi(inq, 6, 36, W->pa[NADI_DATA])) { W->storage_status = 0x1000u | (uint32_t)r; return; }
+	if (int r = scsi(inq, 6, 36)) { W->storage_status = 0x1000u | (uint32_t)r; return; }
 	for (int i = 0; i < 8; i++) W->storage_vendor[i] = (d[8 + i] >= 32 && d[8 + i] < 127) ? (char)d[8 + i] : ' ';
 	for (int i = 0; i < 16; i++) W->storage_product[i] = (d[16 + i] >= 32 && d[16 + i] < 127) ? (char)d[16 + i] : ' ';
 	W->storage_vendor[8] = 0; W->storage_product[16] = 0;
 	uint8_t tur[6] = { 0, 0, 0, 0, 0, 0 };
-	for (int tries = 0; tries < 5 && scsi(tur, 6, 0, 0); tries++) {          /* wait until the stick is ready */
+	for (int tries = 0; tries < 5 && scsi(tur, 6, 0); tries++) {          /* wait until the stick is ready */
 		uint8_t rs[6] = { 0x03, 0, 0, 0, 18, 0 };
-		scsi(rs, 6, 18, W->pa[NADI_DATA]);
+		scsi(rs, 6, 18);
 		pause_ms(100);
 	}
 	uint8_t cap[10] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	if (int r = scsi(cap, 10, 8, W->pa[NADI_DATA])) { W->storage_status = 0x2000u | (uint32_t)r; return; }
+	if (int r = scsi(cap, 10, 8)) { W->storage_status = 0x2000u | (uint32_t)r; return; }
 	W->storage_blocks = (uint64_t)be32(d) + 1; W->storage_block_size = be32(d + 4);
-	if (W->storage_block_size < 512 || W->storage_block_size > 4096) { W->storage_status = 0x3000; return; }
+	uint32_t sbs = W->storage_block_size;                                   /* 512 to 4096, a power of two */
+	if (sbs < 512 || sbs > 4096 || (sbs & (sbs - 1))) { W->storage_status = 0x3000; return; }
 	W->storage_status = 0;
 	W->storage_slot = msc.slot;
-}
-
-static uint32_t storage_read(uint64_t lba, uint32_t count)
-{
-	if (!W->storage_slot || !count || count * W->storage_block_size > 4096 || lba + count > W->storage_blocks || lba > 0xffffffffULL)
-		return 8;
-	uint8_t rd[10] = { 0x28, 0, (uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
-	                   0, (uint8_t)(count >> 8), (uint8_t)count, 0 };
-	return (uint32_t)scsi(rd, 10, count * W->storage_block_size, W->pa[NADI_DATA]);
 }
 
 static uint32_t address_and_name(unsigned port, unsigned speed)

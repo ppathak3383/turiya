@@ -581,6 +581,8 @@ struct organ
 	unsigned long gen, falls, heals, irqs, last_heal_us, typed;
 	unsigned long fell_at[4];          /* heartbeat (+1) of its last four falls */
 	uint64_t t_fall;
+	seL4_Word fell_label, fell_ip, fell_addr;   /* what seL4 said about its last fall */
+	bool untold;                       /* healed first: the report of the fall is still to be written */
 	bool made, awake, resting, present;
 	const char *step; long err;        /* where making it failed, if it did */
 };
@@ -1029,27 +1031,37 @@ static void reflex_poll(void)
 	if (reflex && reflex_ready) Kbd::drain(sakshi_port, reflex_dec, [](char c) { keys++; key_char(c); });
 }
 
-/* an organ fell: seL4 stopped it and told us. Re-make it from its seed and start it again, within limits. */
+/* what seL4 said about a fall, written once the organ is running again, so healing never waits for the screen */
+static void tell_fall(organ &o, bool restarted)
+{
+	interject_begin();
+	colour = RED; out("  "); out(o.name); out(" fell: ");
+	out(o.fell_label == seL4_Fault_VMFault ? "it touched memory it does not hold"
+	  : o.fell_label == seL4_Fault_UserException ? "a processor exception"
+	  : o.fell_label == seL4_Fault_CapFault ? "it used a capability it does not hold" : "an unknown fault");
+	out(" (ip "); out_hex(o.fell_ip);
+	if (o.fell_label == seL4_Fault_VMFault) { out(", address "); out_hex(o.fell_addr); }
+	out(")\n");
+	colour = DIM; out("  seL4 stopped it at that instruction; nothing outside its own pages was touched.\n");
+	if (restarted) out("  re-made from its seed (SHA-256 checked) and started again\n");
+	colour = FG;
+	o.untold = false;
+}
+
+/* an organ fell: seL4 stopped it and told us. Re-make it from its seed and start it again, within limits;
+   heal first, tell after: it is running again before Sakshi writes a word. */
 static void organ_fell(organ &o, seL4_MessageInfo_t info)
 {
 	o.t_fall = rdtsc(); o.awake = false; o.falls++;
-	seL4_Word label = seL4_MessageInfo_get_label(info);
-	seL4_Word ip = seL4_GetMR(0), addr = label == seL4_Fault_VMFault ? seL4_GetMR(seL4_VMFault_Addr) : 0;
-	interject_begin();
-	colour = RED; out("  "); out(o.name); out(" fell: ");
-	out(label == seL4_Fault_VMFault ? "it touched memory it does not hold"
-	  : label == seL4_Fault_UserException ? "a processor exception"
-	  : label == seL4_Fault_CapFault ? "it used a capability it does not hold" : "an unknown fault");
-	out(" (ip "); out_hex(ip);
-	if (label == seL4_Fault_VMFault) { out(", address "); out_hex(addr); }
-	out(")\n");
-	colour = DIM; out("  seL4 stopped it at that instruction; nothing outside its own pages was touched.\n"); colour = FG;
+	o.fell_label = seL4_MessageInfo_get_label(info);
+	o.fell_ip = seL4_GetMR(0);
+	o.fell_addr = o.fell_label == seL4_Fault_VMFault ? seL4_GetMR(seL4_VMFault_Addr) : 0;
 	for (int i = 3; i > 0; i--) o.fell_at[i] = o.fell_at[i - 1];
 	o.fell_at[0] = beats + 1;
-	if (o.fell_at[3] && o.fell_at[0] - o.fell_at[3] <= 30) { organ_rest(o, "it fell 4 times within 30 seconds"); return; }
-	if (!remake(o)) { organ_rest(o, "its seed failed the SHA-256 check"); return; }
-	if (start(o))   { organ_rest(o, "it could not be started again"); return; }
-	colour = DIM; out("  re-made from its seed (SHA-256 checked) and started again\n"); colour = FG;
+	if (o.fell_at[3] && o.fell_at[0] - o.fell_at[3] <= 30) { tell_fall(o, false); organ_rest(o, "it fell 4 times within 30 seconds"); return; }
+	if (!remake(o)) { tell_fall(o, false); organ_rest(o, "its seed failed the SHA-256 check"); return; }
+	if (start(o))   { tell_fall(o, false); organ_rest(o, "it could not be started again"); return; }
+	o.untold = true;
 	if (!hold_prompt) { hold_prompt = true; hold_since = beats; }   /* the prompt returns when it says it is ready */
 }
 
@@ -1091,6 +1103,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 			uint64_t dt = rdtsc() - o.t_fall; o.t_fall = 0; o.heals++;
 			o.last_heal_us = tsc_hz ? (unsigned long)(dt * 1000000 / tsc_hz) : 0;
 			interject_begin();
+			if (o.untold) tell_fall(o, true);
 			colour = GREEN; out("  "); out(o.name); out(" healed: awake again");
 			if (tsc_hz) { out(" in "); out_dec(o.last_heal_us); out(" microseconds"); }
 			out(", generation "); out_dec(o.gen); out(o.id == 1 ? ". Type to feel it.\n" : ".\n"); colour = FG;

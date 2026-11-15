@@ -1,0 +1,19 @@
+=== Kosa THEOREM_A
+Runtime decision procedure: 37.1213s
+** 0 of 22 failed (1 iterations)
+VERIFICATION SUCCESSFUL
+=== Kosa THEOREM_B
+Runtime decision procedure: 33.7294s
+** 0 of 24 failed (1 iterations)
+VERIFICATION SUCCESSFUL
+=== Nadi THEOREM_C
+Runtime decision procedure: 0.132085s
+** 0 of 18 failed (1 iterations)
+VERIFICATION SUCCESSFUL
+=== Nadi THEOREM_D
+Runtime decision procedure: 0.319533s
+** 0 of 19 failed (1 iterations)
+VERIFICATION SUCCESSFUL
+static check: submit() is the only road to the controller (0 findings)
+static check: scsi() is the only road to a stick; nothing else carries data out (0 findings)
+5.95.1 (cbmc-5.95.1)
