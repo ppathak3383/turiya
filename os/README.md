@@ -23,7 +23,7 @@ How it fits together: `ARCHITECTURE.md`.
 
 | Claim | How | Where |
 |---|---|---|
-| The gate's decision is right for every input | Verus proof of the Rust decision; on seL4 it runs as a second judge beside the C++ rule | `gate-rs/`, `sakshi/proofs/` |
+| The gate's Rust decision meets its written specification | Verus proof; on seL4 it runs as a second judge beside the C++ rule, and the two agreed on all 1296 flag combinations | `gate-rs/`, `sakshi/proofs/` |
 | The gate's C++ rule: 7 properties | CBMC, plus 17.5 M fuzzed inputs for the detector | `sakshi/proofs/` |
 | Kośa can only read the SSD, only into its page, exactly the blocks asked | CBMC on the code that runs (theorems A, B); 7 mutants caught | `organs/proofs/` |
 | Nāḍī can only read a stick: reading commands only, data only in | CBMC on the code that runs (theorems C, D); 6 mutants caught | `organs/proofs/` |
