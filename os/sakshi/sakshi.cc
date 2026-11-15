@@ -25,6 +25,8 @@
 #include "kosa_seed.h"
 #include "hrdaya_seed.h"
 #include "kosa_window.h"
+#include "nadi_seed.h"
+#include "nadi_window.h"
 
 typedef unsigned long uptr;
 typedef unsigned int  u32b;
@@ -449,6 +451,7 @@ static void help(void)
 	out("  organs                   the parts of Turiya: duty, what each holds, health\n");
 	out("  body                     the hardware Turiya found (read-only survey)\n");
 	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
+	out("  usb                      what is plugged into USB; a USB keyboard can type here (Nadi)\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");
 	out("  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000\n");
@@ -518,7 +521,7 @@ static void hexify(const Turiya::u8 *b, unsigned n, char *hx)
 
 /* ---- organs: compartments with one duty (svadharma), fixed limits (maryada) and recovery (cikitsa) ---- */
 enum : seL4_Word { ORG_FAULT = 0x1000, ORG_MSG = 0x2000 };          /* endpoint badges: kind | organ id */
-enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3 };            /* what an organ may say */
+enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3, L_PLUG = 5, L_UNPLUG = 6 }; /* what an organ may say */
 enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_STOP = 0x40, N_FALL = 0x80 }; /* bits on an organ's notification */
 enum : uptr { ORG_TLS = 0x5000000, ORG_IPC = 0x6000000, ORG_SCRATCH = 0x10000000 };
 
@@ -535,7 +538,7 @@ struct organ
 	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req, stop;
 	organ_page pages[32]; unsigned npages, ncode;
 	uptr entry, scratch;
-	unsigned long gen, falls, heals, irqs, last_heal_us;
+	unsigned long gen, falls, heals, irqs, last_heal_us, typed;
 	unsigned long fell_at[4];          /* heartbeat (+1) of its last four falls */
 	uint64_t t_fall;
 	bool made, awake, resting, present;
@@ -545,7 +548,12 @@ struct organ
 static organ tvak { "Tvak", 1, TVAK_SEED, TVAK_LEN, TVAK_SHA256 };
 static organ kosa { "Kosa", 2, KOSA_SEED, KOSA_LEN, KOSA_SHA256 };
 static organ hrdaya { "Hrdaya", 3, HRDAYA_SEED, HRDAYA_LEN, HRDAYA_SHA256 };
-static organ *organ_by_id(seL4_Word id) { return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : nullptr; }
+static organ nadi { "Nadi", 4, NADI_SEED, NADI_LEN, NADI_SHA256 };
+static NadiWindow *nwin;                  /* Sakshi's view of Nadi's window (set when Nadi is made) */
+static organ *organ_by_id(seL4_Word id)
+{
+	return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : id == nadi.id ? &nadi : nullptr;
+}
 static uint64_t tsc_hz;                /* processor clock: from the kernel, else measured against the heart */
 static bool tsc_known;
 
@@ -703,7 +711,7 @@ static void organ_rest(organ &o, const char *why)
 	colour = SAFFRON; out("  "); out(o.name); out(" rests: "); out(why); out(".\n");
 	colour = DIM;
 	if (&o == &tvak) { out("  Sakshi feels the keyboard itself (reflex) until you type 'heal tvak'.\n"); reflex_on(); }
-	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : "?"); out("'.\n"); }
+	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : o.id == 3 ? "hrdaya" : o.id == 4 ? "nadi" : "?"); out("'.\n"); }
 	colour = FG;
 	hold_prompt = false; interject_end(); status_bar();
 }
@@ -786,6 +794,12 @@ static void show_organs(void)
 		out("           "); out(kosa.resting ? "resting" : (kosa.awake ? "awake" : "healing"));
 		out(", generation "); out_dec(kosa.gen); out("; fell "); out_dec(kosa.falls); out(", healed "); out_dec(kosa.heals); out("\n");
 	}
+	colour = SAFFRON; out("  Nadi     "); colour = FG; out("channel: the USB controller; names devices, listens to a USB keyboard\n");
+	colour = DIM;
+	if (!nadi.made) out("           made only when you type 'usb'\n");
+	else { out("           holds 3 capabilities, the controller's registers, 48 DMA pages, 1 window; no IRQ\n");
+	       out("           "); out(nadi.resting ? "resting" : (nadi.awake ? "awake" : "healing")); out(", generation "); out_dec(nadi.gen);
+	       out("; fell "); out_dec(nadi.falls); out(", healed "); out_dec(nadi.heals); out("; keys typed "); out_dec(nadi.typed); out("\n"); }
 	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart: the PIT timer at 50 Hz, one signal to Sakshi per tick\n");
 	colour = DIM;
 	if (!hrdaya.made) { out("           not made ("); out(hrdaya.step ? hrdaya.step : "?"); out("); Sakshi keeps the timer itself\n"); }
@@ -821,6 +835,7 @@ static void clear_screen(void)
 }
 
 static void do_disk(void);
+static void do_usb(void);
 
 static void execute(char *l)
 {
@@ -841,6 +856,7 @@ static void execute(char *l)
 	if (streq(w[0], "organs")) { show_organs(); return; }
 	if (streq(w[0], "body")) { show_body(); return; }
 	if (streq(w[0], "disk")) { do_disk(); return; }
+	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
 			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;
@@ -857,7 +873,7 @@ static void execute(char *l)
 	}
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
 	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
-		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa
+		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi
 		         : (streq(w[1], "hrdaya") || streq(w[1], "heart")) ? &hrdaya : nullptr;
 		if (t && w[0][0] == 's') {
 			if (!t->made || !t->awake) { colour = DIM; out("  "); out(t->name); out(" is not awake.\n"); colour = FG; return; }
@@ -865,7 +881,7 @@ static void execute(char *l)
 			hold_prompt = true; hold_since = beats; seL4_Signal(t->stop); return;
 		}
 		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
-		colour = DIM; out("  only the organs (tvak, kosa, hrdaya). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
+		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
 	}
 	if (streq(w[0], "mail")) {
@@ -966,7 +982,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 	seL4_Word label = seL4_MessageInfo_get_label(info), a = seL4_GetMR(0), b = seL4_GetMR(1);
 	if (label == L_KEY) {
 		if (!o.awake || o.resting) return;
-		o.irqs = b; keys++;
+		o.irqs = b; keys++; o.typed++;
 		last_key_beat = beats;
 		if (dreaming_idle) {
 			dreaming_idle = false; avastha = Turiya::Avastha::JAGRAT;
@@ -977,6 +993,16 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 		bool first = keys == 1;
 		key_char((char)a);
 		if (first) status_bar();
+		return;
+	}
+	if (label == L_PLUG || label == L_UNPLUG) {                       /* Nadi: something plugged in or pulled out */
+		interject_begin();
+		colour = DIM; out("  USB port "); out_dec(a); colour = FG;
+		if (label == L_PLUG && nwin && b < NADI_MAXDEV) {
+			out(": "); out(nwin->dev[b].what); out(" plugged in");
+			if (nwin->keyboard_slot && nwin->dev[b].slot == nwin->keyboard_slot) { colour = GREEN; out(" - listening: type on it"); }
+		} else out(": unplugged");
+		out("\n"); colour = FG; interject_end();
 		return;
 	}
 	if (label == L_READY) {
@@ -996,6 +1022,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 }
 
 #include "kosa_host.h"
+#include "nadi_host.h"
 
 static void cpu_name(char *nm)
 {

@@ -30,6 +30,7 @@ static void heart_tick(void)
 	}
 	if (irq_pit) seL4_IRQHandler_Ack(irq_pit);               /* only when Sakshi keeps the timer itself */
 	if (tvak.made && tvak.awake) seL4_Signal(tvak.pulse);   /* Tvak feels the keys even without IRQ 1 */
+	if (nadi.made && nadi.awake) seL4_Signal(nadi.pulse);   /* Nadi looks at the USB keyboard */
 	reflex_poll();
 }
 

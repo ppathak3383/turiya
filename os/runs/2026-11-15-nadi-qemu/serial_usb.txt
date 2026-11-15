@@ -1,0 +1,36 @@
+turiya> Turiya: ready
+usb
+  Nadi, the channel (USB: finds what is plugged in; listens to a USB keyboard)
+  controller xHCI 0x100  at PCI 00:03.0, 8 ports, 64 slots, 0 scratchpad pages
+  connected  1 port
+    port 1  storage               46f4:0001  super speed
+turiya> 
+  USB port 6: keyboard plugged in - listening: type on it
+turiya> abc
+  blocked_outside_mandate: abc  0
+  'abc' is not in your mandate (summarise, draft_reply, add_reminder)
+  and is not a known irreversible action, so it is blocked.
+turiya> crash nadi
+  asking Nadi to write to the screen at 0x8000000000, which only Sakshi holds
+  Nadi fell: it touched memory it does not hold (ip 0x402650, address 0x8000000000)
+  seL4 stopped it at that instruction; nothing outside its own pages was touched.
+  re-made from its seed (SHA-256 checked) and started again
+  Nadi healed: awake again in 124909 microseconds, generation 2.
+turiya> organs
+  Sakshi   witness: the screen, the gate and your approvals
+           holds what seL4 gave at boot; makes the organs and heals them
+  Tvak     touch: key presses into characters for Sakshi
+           holds ports 0x60-0x64, IRQ 1, one channel out, 7 pages (3 read-only), TLS, IPC buffer
+           awake, generation 1; fell 0, healed 0
+           seed: 9280 bytes, SHA-256 1f1d8f392812c4f5..., checked before every start
+  Kosa     storehouse: reads the NVMe SSD; it can only read
+           made only when you type 'disk'
+  Nadi     channel: the USB controller; names devices, listens to a USB keyboard
+           holds 3 capabilities, the controller's registers, 48 DMA pages, 1 window; no IRQ
+           awake, generation 2; fell 1, healed 1; keys typed 22
+  Hrdaya   heart: the PIT timer at 50 Hz, one signal to Sakshi per tick
+           holds ports 0x40-0x43, IRQ 0, one signal into Sakshi; 30 beats
+           awake, generation 1; fell or stopped 0, healed 0
+  Prana    breath, Sakshi's own: the RTC at 2 Hz, it watches the heart
+           60 breaths
+turiya> 

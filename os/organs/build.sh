@@ -20,6 +20,10 @@ g++ $FL $INC $LD -o hrdaya hrdaya.cc
 strip -s -o hrdaya.seed hrdaya
 python3 mkseed.py hrdaya.seed HRDAYA ../sakshi/hrdaya_seed.h
 
+g++ $FL $INC $LD -o nadi nadi.cc
+strip -s -o nadi.seed nadi
+python3 mkseed.py nadi.seed NADI ../sakshi/nadi_seed.h
+
 cd ../sakshi
 g++ $FL $INC -I../organs $LD -o sakshi sakshi.cc
 ls -l sakshi | awk '{print "sakshi", $5, "bytes"}'
