@@ -22,9 +22,31 @@ static void heart_tick(void)
 		}
 		status_bar();
 	}
-	seL4_IRQHandler_Ack(irq_pit);
+	if (irq_pit) seL4_IRQHandler_Ack(irq_pit);               /* only when Sakshi keeps the timer itself */
 	if (tvak.made && tvak.awake) seL4_Signal(tvak.pulse);   /* Tvak feels the keys even without IRQ 1 */
 	reflex_poll();
+}
+
+/* the breath: Sakshi's own slow clock (RTC, 2 Hz). It watches the heart: no tick for 4 breaths, re-make it. */
+static unsigned long ticks_seen, still_breaths, hold_breaths;
+static void organ_revive(organ &o, const char *why);
+
+static void breath(void)
+{
+	breaths++;
+	outb(rtc_port, 0x70, 0x0c); inb(rtc_port, 0x71);           /* tell the RTC it was heard */
+	seL4_IRQHandler_Ack(irq_rtc);
+	if (hrdaya.made && hrdaya.awake && !hrdaya.resting) {
+		if (ticks == ticks_seen) {
+			if (++still_breaths >= 4) { still_breaths = 0; organ_revive(hrdaya, "no beat for 2 seconds, seen by the breath"); }
+		} else still_breaths = 0;
+	}
+	ticks_seen = ticks;
+	if (!hold_prompt) hold_breaths = 0;
+	else if (++hold_breaths > 8) {
+		interject_begin(); colour = DIM; out("  no word from the organ yet.\n"); colour = FG;
+		hold_prompt = false; interject_end();
+	}
 }
 
 /* keys that arrive while Sakshi waits for an organ are kept, and typed afterwards */
@@ -58,6 +80,7 @@ static bool wait_for(organ &o, seL4_Word label, unsigned long max_beats, seL4_Wo
 			organ_spoke(*x, info);
 			continue;
 		}
+		if (badge & N_BREATH) breath();
 		if (badge & N_HEART) { heart_tick(); if (beats >= until) return false; }
 	}
 }

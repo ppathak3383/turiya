@@ -23,6 +23,7 @@
 #include "kbd_i8042.h"
 #include "tvak_seed.h"
 #include "kosa_seed.h"
+#include "hrdaya_seed.h"
 #include "kosa_window.h"
 
 typedef unsigned long uptr;
@@ -156,7 +157,7 @@ static void cursor(bool on)
 }
 
 /* status bar below the grid: the heart, the keyboard organ, the keys */
-static unsigned long beats, keys;
+static unsigned long beats, keys, breaths;
 static const char *organ_state(void);
 static void status_bar(void)
 {
@@ -365,26 +366,41 @@ static seL4_CPtr ep;          /* Sakshi's endpoint: organs speak here, and their
 
 enum : seL4_Word { N_HEART = 2 };                                  /* Sakshi's own notification bits */
 
+static seL4_CPtr rtc_port, irq_rtc;
+enum : seL4_Word { N_BREATH = 8 };                                 /* the RTC: Sakshi's own slow clock */
+
 static void setup_io(void)
 {
 	kbd_port = issue_ports(0x60, 0x64);       /* kept only for reboot and the reflex; Tvak gets a copy */
-	pit_port = issue_ports(0x40, 0x43);
+	pit_port = issue_ports(0x40, 0x43);       /* given to Hrdaya, the heart */
 	cf9_port = issue_ports(0xcf8, 0xcff);      /* PCI configuration (0xcf8/0xcfc) and reset (0xcf9) */
+	rtc_port = issue_ports(0x70, 0x71);       /* the RTC: Sakshi's breath */
 	ntfn = alloc_slot(); ep = alloc_slot();
 	if (!ep || retype(ram_ut, seL4_NotificationObject, 0, ntfn, 1) || retype(ram_ut, seL4_EndpointObject, 0, ep, 1)) {
 		ntfn = ep = 0; io_report = "no notification"; return;
 	}
-	/* the heart: PIT channel 0, rate generator, 50 Hz */
-	if (pit_port) {
-		unsigned div = 1193182 / 50;
-		outb(pit_port, 0x43, 0x34);
-		outb(pit_port, 0x40, (uint8_t)(div & 0xff));
-		outb(pit_port, 0x40, (uint8_t)(div >> 8));
+	/* heartbeats and breaths reach Sakshi even while it waits on its endpoint */
+	if (seL4_TCB_BindNotification(seL4_CapInitThreadTCB, ntfn)) { io_report = "notification not bound"; return; }
+	/* the breath: RTC periodic interrupt at 2 Hz (rate 15), IRQ 8 */
+	if (rtc_port) {
+		outb(rtc_port, 0x70, 0x0a); uint8_t a = inb(rtc_port, 0x71);
+		outb(rtc_port, 0x70, 0x0a); outb(rtc_port, 0x71, (uint8_t)((a & 0xf0) | 0x0f));
+		outb(rtc_port, 0x70, 0x0b); uint8_t b = inb(rtc_port, 0x71);
+		outb(rtc_port, 0x70, 0x0b); outb(rtc_port, 0x71, (uint8_t)(b | 0x40));
+		outb(rtc_port, 0x70, 0x0c); inb(rtc_port, 0x71);
+		irq_rtc = irq_on_pin(8, 8, N_BREATH);
 	}
+}
+
+/* the heart inside Sakshi, used only if Hrdaya cannot be made */
+static void heart_fallback(void)
+{
+	if (!pit_port) return;
+	unsigned div = 1193182 / 50;
+	outb(pit_port, 0x43, 0x34);
+	outb(pit_port, 0x40, (uint8_t)(div & 0xff));
+	outb(pit_port, 0x40, (uint8_t)(div >> 8));
 	irq_pit = irq_on_pin(2, 2, N_HEART);
-	/* heartbeats reach Sakshi even while it waits on its endpoint */
-	if (irq_pit && seL4_TCB_BindNotification(seL4_CapInitThreadTCB, ntfn)) irq_pit = 0;
-	io_report = irq_pit ? "heart on the PIT interrupt" : "no heart interrupt";
 }
 
 /* the reflex: Sakshi feels the keyboard itself, only if Tvak cannot be made or is resting */
@@ -428,8 +444,9 @@ static void help(void)
 	out("                           summarise inbox    draft_reply papa    delete photos\n");
 	out("  approve                  approve the last held action (only from this keyboard)\n");
 	out("  log                      the witness log of this session\n");
-	out("  crash tvak               make the keyboard organ touch what it does not hold\n");
-	out("  heal tvak                wake the keyboard organ again if it is resting\n");
+	out("  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)\n");
+	out("  stop hrdaya              make the heart go silent; the breath notices and restarts it\n");
+	out("  heal <organ>             wake an organ again if it is resting\n");
 	out("  clear                    clear the screen\n");
 	out("  reboot                   restart the machine (pull the stick for Windows)\n");
 	out("  poweroff                 switch the machine off\n");
@@ -486,7 +503,7 @@ static void hexify(const Turiya::u8 *b, unsigned n, char *hx)
 /* ---- organs: compartments with one duty (svadharma), fixed limits (maryada) and recovery (cikitsa) ---- */
 enum : seL4_Word { ORG_FAULT = 0x1000, ORG_MSG = 0x2000 };          /* endpoint badges: kind | organ id */
 enum : seL4_Word { L_KEY = 1, L_READY = 2, L_DONE = 3 };            /* what an organ may say */
-enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_FALL = 0x80 }; /* bits on an organ's notification */
+enum : seL4_Word { N_IRQ = 1, N_PULSE = 2, N_REQ = 4, N_STOP = 0x40, N_FALL = 0x80 }; /* bits on an organ's notification */
 enum : uptr { ORG_TLS = 0x5000000, ORG_IPC = 0x6000000, ORG_SCRATCH = 0x10000000 };
 
 struct elf_ehdr { unsigned char ident[16]; uint16_t type, machine; uint32_t version; uint64_t entry, phoff, shoff;
@@ -499,7 +516,7 @@ struct organ
 {
 	const char *name; seL4_Word id;
 	const unsigned char *seed; unsigned long seed_len; const char *seed_sha;
-	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req;
+	seL4_CPtr tcb, cnode, pml4, ntfn, irq, ipc, tls, pulse, fall, req, stop;
 	organ_page pages[32]; unsigned npages, ncode;
 	uptr entry, scratch;
 	unsigned long gen, falls, heals, irqs, last_heal_us;
@@ -511,7 +528,8 @@ struct organ
 
 static organ tvak { "Tvak", 1, TVAK_SEED, TVAK_LEN, TVAK_SHA256 };
 static organ kosa { "Kosa", 2, KOSA_SEED, KOSA_LEN, KOSA_SHA256 };
-static organ *organ_by_id(seL4_Word id) { return id == tvak.id ? &tvak : id == kosa.id ? &kosa : nullptr; }
+static organ hrdaya { "Hrdaya", 3, HRDAYA_SEED, HRDAYA_LEN, HRDAYA_SHA256 };
+static organ *organ_by_id(seL4_Word id) { return id == tvak.id ? &tvak : id == kosa.id ? &kosa : id == hrdaya.id ? &hrdaya : nullptr; }
 static uint64_t tsc_hz;                /* processor clock: from the kernel, else measured against the heart */
 static bool tsc_known;
 
@@ -589,8 +607,8 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 
 	/* capabilities: slot 1 faults, 2 channel out, 3 its notification, then only what its duty needs
 	 * (4 its IRQ, 5 its ports). Nothing else. */
-	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot(); o.req = alloc_slot();
-	if (!o.req) return fail(o, "slots", 7);
+	seL4_CPtr irq = alloc_slot(), nb = alloc_slot(); o.pulse = alloc_slot(); o.fall = alloc_slot(); o.req = alloc_slot(); o.stop = alloc_slot();
+	if (!o.stop) return fail(o, "slots", 7);
 	if ((r = seL4_CNode_Mint(o.cnode, 1, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
 	                         seL4_CapRights_new(1, 0, 0, 1), ORG_FAULT | o.id)))          return fail(o, "fault channel", r);
 	if ((r = seL4_CNode_Mint(o.cnode, 2, 6, seL4_CapInitThreadCNode, ep, seL4_WordBits,
@@ -611,6 +629,8 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 		return fail(o, "ports", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.req, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_REQ)))                                     return fail(o, "request", r);
+	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.stop, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
+	                         seL4_CanWrite, N_STOP)))                                    return fail(o, "stop", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.pulse, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
 	                         seL4_CanWrite, N_PULSE)))                                   return fail(o, "pulse", r);
 	if ((r = seL4_CNode_Mint(seL4_CapInitThreadCNode, o.fall, seL4_WordBits, seL4_CapInitThreadCNode, o.ntfn, seL4_WordBits,
@@ -670,6 +690,18 @@ static void organ_rest(organ &o, const char *why)
 	else { out("  it stays asleep until you type 'heal "); out(o.id == 2 ? "kosa" : "?"); out("'.\n"); }
 	colour = FG;
 	hold_prompt = false; interject_end(); status_bar();
+}
+
+/* the breath saw an organ go silent: stop it, re-make it from its seed, start it again */
+static void organ_revive(organ &o, const char *why)
+{
+	seL4_TCB_Suspend(o.tcb);
+	o.awake = false; o.t_fall = rdtsc(); o.falls++;
+	interject_begin();
+	colour = RED; out("  "); out(o.name); out(" stopped: "); out(why); out("\n");
+	if (!remake(o) || start(o)) { organ_rest(o, "it could not be re-made"); return; }
+	colour = DIM; out("  re-made from its seed (SHA-256 checked) and started again\n"); colour = FG;
+	if (!hold_prompt) { hold_prompt = true; hold_since = beats; }
 }
 
 static void crash_organ(organ &o)
@@ -738,8 +770,16 @@ static void show_organs(void)
 		out("           "); out(kosa.resting ? "resting" : (kosa.awake ? "awake" : "healing"));
 		out(", generation "); out_dec(kosa.gen); out("; fell "); out_dec(kosa.falls); out(", healed "); out_dec(kosa.heals); out("\n");
 	}
-	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart, still inside Sakshi: PIT timer at 50 Hz, ");
-	out_dec(beats); out(" beats\n");
+	colour = SAFFRON; out("  Hrdaya   "); colour = FG; out("heart: the PIT timer at 50 Hz, one signal to Sakshi per tick\n");
+	colour = DIM;
+	if (!hrdaya.made) { out("           not made ("); out(hrdaya.step ? hrdaya.step : "?"); out("); Sakshi keeps the timer itself\n"); }
+	else {
+		out("           holds ports 0x40-0x43, IRQ 0, one signal into Sakshi; "); out_dec(beats); out(" beats\n");
+		out("           "); out(hrdaya.resting ? "resting" : (hrdaya.awake ? "awake" : "healing"));
+		out(", generation "); out_dec(hrdaya.gen); out("; fell or stopped "); out_dec(hrdaya.falls); out(", healed "); out_dec(hrdaya.heals); out("\n");
+	}
+	colour = SAFFRON; out("  Prana    "); colour = FG; out("breath, Sakshi's own: the RTC at 2 Hz, it watches the heart\n");
+	colour = DIM; out("           "); out_dec(breaths); out(breaths ? " breaths\n" : " breaths: no RTC interrupt seen yet\n"); colour = FG;
 }
 
 /* the body survey and power-off (read-only PCI and ACPI) */
@@ -786,10 +826,16 @@ static void execute(char *l)
 	if (streq(w[0], "body")) { show_body(); return; }
 	if (streq(w[0], "disk")) { do_disk(); return; }
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
-	if (streq(w[0], "crash") || streq(w[0], "heal")) {
-		organ *t = w[1] && streq(w[1], "tvak") ? &tvak : w[1] && streq(w[1], "kosa") ? &kosa : nullptr;
+	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
+		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa
+		         : (streq(w[1], "hrdaya") || streq(w[1], "heart")) ? &hrdaya : nullptr;
+		if (t && w[0][0] == 's') {
+			if (!t->made || !t->awake) { colour = DIM; out("  "); out(t->name); out(" is not awake.\n"); colour = FG; return; }
+			colour = DIM; out("  asking "); out(t->name); out(" to go silent without falling; the breath should notice\n"); colour = FG;
+			hold_prompt = true; hold_since = beats; seL4_Signal(t->stop); return;
+		}
 		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
-		colour = DIM; out("  only the organs (tvak, kosa). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
+		colour = DIM; out("  only the organs (tvak, kosa, hrdaya). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
 	}
 	if (streq(w[0], "mail")) {
@@ -978,13 +1024,25 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 		else if (long r = start(tvak)) fail(tvak, "first start", r);
 		else tvak.made = true;
 	}
+	/* the heart: its own organ, with one signal into Sakshi's notification; else Sakshi keeps time itself */
+	if (ep && pit_port && make_organ(hrdaya, pit_port, 2, 2, 250)) {
+		if (long r = seL4_CNode_Mint(hrdaya.cnode, 6, 6, seL4_CapInitThreadCNode, ntfn, seL4_WordBits, seL4_CanWrite, N_HEART))
+			fail(hrdaya, "beat signal", r);
+		else if (!remake(hrdaya)) fail(hrdaya, "first image", 8);
+		else if (long r2 = start(hrdaya)) fail(hrdaya, "first start", r2);
+		else hrdaya.made = true;
+	}
+	if (!hrdaya.made) heart_fallback();
+	io_report = hrdaya.made ? (irq_rtc ? "heart: Hrdaya, its own organ; breath: RTC 2 Hz"
+	                                   : "heart: Hrdaya, its own organ; no RTC breath")
+	                        : (irq_pit ? "heart inside Sakshi (Hrdaya could not be made)" : "no heart interrupt");
 	if (!tvak.made) {
 		reflex_on();
 		sput("Turiya: Tvak could not be made at step "); sput(tvak.step ? tvak.step : "?"); sput("\n");
 	}
 
 	colour = SAFFRON; out("TURIYA"); colour = DIM; out("  written from zero on seL4\n\n");
-	colour = FG; out("Sakshi is awake. I hold the screen and a heartbeat; the keyboard has its own organ, Tvak.\n\n");
+	colour = FG; out("Sakshi is awake. I hold the screen, the gate and my own breath; the heart and the keyboard are organs.\n\n");
 	about();
 	out("\n");
 	colour = SAFFRON; out("Kartr gate, 15 test actions (rule code identical to the host tests)\n"); colour = FG;
@@ -1005,7 +1063,10 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 			/* from an organ: the badge says which, and whether it spoke or fell */
 			organ *x = organ_by_id(badge & 0xfff);
 			if (x) { if (badge & ORG_FAULT) organ_fell(*x, info); else organ_spoke(*x, info); }
-		} else if (badge & N_HEART) heart_tick();
+		} else {
+			if (badge & N_BREATH) breath();
+			if (badge & N_HEART) heart_tick();
+		}
 		drain_stash();
 	}
 }
