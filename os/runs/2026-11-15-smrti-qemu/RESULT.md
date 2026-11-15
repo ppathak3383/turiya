@@ -38,3 +38,9 @@ extension, name pieces), the volume label, folders kept as one contiguous run of
 | `files docs` (any letter case) | "A rather long document name.txt", 36 bytes |
 | `read docs/A rather long document name.txt` | "second file, inside the Docs folder" |
 | FAT32 stick afterwards | `files Photos` and `read hello.txt` unchanged |
+
+## The stick Turiya starts from
+
+GPT sticks with only an EFI system partition (FAT32) are read too, so on the HP `files` can list the very stick
+Turiya booted from. Emulator, on a copy of Turiya's own stick image: top folder `EFI`; `files efi/boot`:
+`BOOTX64.EFI`, 1 MB (that is Uṣas).

@@ -90,16 +90,22 @@ static uint32_t mount(void)
 		uint64_t elba = (uint64_t)u32(D + 72) | (uint64_t)u32(D + 76) << 32;
 		uint32_t esz = u32(D + 84);
 		if (esz < 128 || esz > bs || bs % esz) return 5;
+		/* a basic-data partition, or else the EFI system partition (FAT too: the stick Turiya starts from) */
 		static const uint8_t basic[16] = { 0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7 };
+		static const uint8_t esp[16]   = { 0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b };
+		uint64_t esp_at = 0;
 		for (uint32_t blk = 0; blk < 4 && !part; blk++) {
 			if (!need(elba + blk, 1)) return 6;
 			for (uint32_t k = 0; k < bs / esz && !part; k++) {
 				const volatile uint8_t *e = D + k * esz;
-				bool same = true;
-				for (int j = 0; j < 16; j++) same &= e[j] == basic[j];
-				if (same) part = (uint64_t)u32(e + 32) | (uint64_t)u32(e + 36) << 32;
+				bool b = true, x = true;
+				for (int j = 0; j < 16; j++) { b &= e[j] == basic[j]; x &= e[j] == esp[j]; }
+				uint64_t at = (uint64_t)u32(e + 32) | (uint64_t)u32(e + 36) << 32;
+				if (b) part = at;
+				else if (x && !esp_at) esp_at = at;
 			}
 		}
+		if (!part) part = esp_at;
 	}
 	W->part_lba = part;
 	if (part >= W->blocks) return 7;
