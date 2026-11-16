@@ -45,7 +45,9 @@ whole address) and a new verdict `HeldUnknownTarget` (last, so the numbers still
 postcondition **P7**: an act on an unknown target is allowed only with the exact approval; P5 now also needs
 `!unknown_target`. Sakshi passes the fact as flag bit 9.
 
-**Not yet re-checked by Verus**: the 16 Nov night run could not download Verus (GitHub releases blocked in
-that session). The differential run was done on the executable code (`strip_verus.py`, plain rustc 1.97):
-`facts_cli` now also enumerates 3 known lists (none, empty, one name) and a mail whose sender is the target:
-**5,832 the same, 0 differ**; `lib.rs` builds as a no_std staticlib. Run `verus gate.rs` to close this.
+**Re-checked 16 Nov, 07:00 IST (Claude, before publishing with the owner's yes):** `verus gate.rs`: **5 verified, 0
+errors** (19.6 s), so P1-P7 hold for every input. A copy that ignores the list (`if !f.planted`) fails P7 and P5.
+The differential through Verus (`verus gate_diff.rs --compile`, 4 verified): **5,832 the same, 0 differ**. Sakshi
+with this decision booted on seL4 in QEMU: the two judges agreed 15 of 15 at boot and 30 of 30 after `gate`
+(`os/runs/2026-11-16-5d/`). The night run had no Verus (its session could not download it) and ran the
+differential on the stripped executable code instead.
