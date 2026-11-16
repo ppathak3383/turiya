@@ -39,7 +39,9 @@ reads the block from a read-only view of Nāḍī's data page.
 | | Sākṣī re-makes it from its seed (the organ image, SHA-256 checked before every start) and starts it again: 1-125 ms |
 | 4 falls within 30 s | the organ rests; for the keyboard, Sākṣī's reflex takes over; `heal <organ>` wakes it |
 | the heart goes silent without falling | Sākṣī's breath (RTC, 2 Hz) notices after 2 s and re-makes it |
-| `crash <organ>`, `stop hrdaya` | the tests for all of the above |
+| a byte of an organ's code or constants changes (a stray write, a confused device's DMA, a bit flip in memory) | the daily round (*dinacaryā*, every minute; `sweep` at once) re-reads every read-only page against the SHA-256 seal taken when the page was written, and re-makes the organ from its seed: 1-125 ms. Three changes in one organ: it rests (the memory under it may be failing) |
+| Sākṣī's own code changes | at start, Sākṣī compares its code and constants with the seal stamped at build (`sakshi/seal.py`); each round compares them with what it found at start. It cannot re-make itself, so it says so and asks for a restart |
+| `crash <organ>`, `stop hrdaya`, `taint <organ>` | the tests for all of the above (`taint` flips one bit in an organ's read-only page, past its last byte of code) |
 
 ## The gate (Kartr)
 
@@ -59,6 +61,8 @@ without a key); **suṣupti**, deep sleep, nothing acts; **turīya**, the witnes
 ## Known gaps
 
 - No IOMMU: a confused USB or NVMe controller could write anywhere in memory by DMA (seL4 has no AMD IOMMU support).
+  The daily round notices such a write if it lands on an organ's code or on Sākṣī's own, within a minute; it cannot
+  see writes to data pages, and re-making an organ keeps the same physical pages.
 - Organs poll instead of taking interrupts (keyboard excepted); fine for now, costs a little power.
 - No writes anywhere yet, by design: nothing is saved between starts.
 - The touchpad (I2C-HID) and the network are not there yet.

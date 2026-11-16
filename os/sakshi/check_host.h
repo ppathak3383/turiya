@@ -10,7 +10,8 @@ static void do_check(void)
 	colour = DIM; out("  Turiya     "); colour = FG;
 	out("heart "); out_dec(beats); out(" beats, breath "); out_dec(breaths);
 	out("; "); out(organ_state());
-	out("; judges agreed "); out_dec(judges_agree); out("/"); out_dec(judges_agree + judges_differ); out("\n");
+	out("; judges agreed "); out_dec(judges_agree); out("/"); out_dec(judges_agree + judges_differ);
+	out("; daily rounds "); out_dec(dina.rounds); out(", changes "); out_dec(dina.found); out("; own code "); out(self_words()); out("\n");
 	colour = DIM; out("  processor  "); colour = FG; { char *c = cpu; while (*c == ' ') c++; out(c); }
 	out(", "); out_dec(ram_mib); out(" MiB"); if (fb) { out(", "); out_dec(fb_w); out("x"); out_dec(fb_h); } out("\n");
 

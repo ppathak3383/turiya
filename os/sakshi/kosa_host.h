@@ -26,6 +26,7 @@ static void heart_tick(void)
 			interject_begin(); colour = DIM; out("  no word from the organ yet.\n"); colour = FG;
 			hold_prompt = false; interject_end();
 		}
+		if (beats >= dina.last_beat + 90) dina.due = true;     /* ...and by the heart, if the breath ever fails */
 		status_bar();
 	}
 	if (irq_pit) seL4_IRQHandler_Ack(irq_pit);               /* only when Sakshi keeps the timer itself */
@@ -58,6 +59,7 @@ static void breath(void)
 	}
 	ticks_seen = ticks;
 	tell_late();
+	if (breaths % 120 == 0) dina.due = true;                 /* the daily round: every minute, by the breath */
 	if (!hold_prompt) hold_breaths = 0;
 	else if (++hold_breaths > 8) {
 		interject_begin(); colour = DIM; out("  no word from the organ yet.\n"); colour = FG;

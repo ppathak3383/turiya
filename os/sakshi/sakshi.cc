@@ -507,6 +507,8 @@ static void help(void)
 	out("  crash <organ>            make an organ touch what it does not hold (tvak, kosa, hrdaya)\n");
 	out("  stop hrdaya              make the heart go silent; the breath notices and restarts it\n");
 	out("  heal <organ>             wake an organ again if it is resting\n");
+	out("  sweep                    the daily round now: re-read every organ's code and Sakshi's own\n");
+	out("  taint <organ>            flip one bit in an organ's read-only page, to test the daily round\n");
 	out("  clear                    clear the screen\n");
 	out("  reboot                   restart the machine (pull the stick for Windows)\n");
 	out("  poweroff                 switch the machine off\n");
@@ -594,6 +596,8 @@ struct organ
 	bool untold;                       /* healed first: the report of the fall is still to be written */
 	bool made, awake, resting, present;
 	const char *step; long err;        /* where making it failed, if it did */
+	Turiya::u8 ro_seal[32][32];        /* SHA-256 of each read-only page as written: the daily round re-reads them */
+	unsigned long changed;             /* how often the daily round found its code changed */
 };
 
 static organ tvak { "Tvak", 1, TVAK_SEED, TVAK_LEN, TVAK_SHA256 };
@@ -724,6 +728,13 @@ static bool make_organ(organ &o, seL4_CPtr ports, seL4_Word irq_pin, seL4_Word i
 	return true;
 }
 
+/* the seal of each read-only page, taken right after it is written: nothing may change it afterwards */
+static void seal_pages(organ &o)
+{
+	for (unsigned k = 0; k < o.npages; k++)
+		if (!o.pages[k].w) { Turiya::Sha256 s; s.add((const Turiya::u8 *)(o.scratch + k * 4096UL), 4096); s.finish(o.ro_seal[k]); }
+}
+
 /* re-make the organ's memory from its seed: the seed is checked first, every page is rewritten */
 static bool remake(organ &o)
 {
@@ -745,6 +756,7 @@ static bool remake(organ &o)
 	}
 	/* thread pointer: x86-64 TLS variant II, the word at the thread pointer points to itself */
 	*(volatile uptr *)(o.scratch + o.npages * 4096UL + 0x800) = ORG_TLS + 0x800;
+	seal_pages(o);
 	return true;
 }
 
@@ -804,6 +816,7 @@ static void heal_organ(organ &o)
 	o.resting = false;
 	if (o.id == 1) reflex = false;
 	for (int i = 0; i < 4; i++) o.fell_at[i] = 0;
+	o.changed = 0;
 	o.t_fall = rdtsc();
 	if (start(o)) { o.resting = true; if (o.id == 1) reflex = true; colour = RED; out("  it could not be started.\n"); colour = FG; return; }
 	out("  re-made from its seed (SHA-256 checked) and woken\n"); colour = FG;
@@ -825,6 +838,10 @@ static const char *organ_state(void)
 	organ_line[k] = 0;
 	return organ_line;
 }
+
+static void show_dinacarya(void);
+static void dinacarya_round(bool show, bool from_loop);
+static void taint_organ(organ &o);
 
 static void show_organs(void)
 {
@@ -879,6 +896,7 @@ static void show_organs(void)
 	}
 	colour = SAFFRON; out("  Prana    "); colour = FG; out("breath, Sakshi's own: the RTC at 2 Hz, it watches the heart\n");
 	colour = DIM; out("           "); out_dec(breaths); out(breaths ? " breaths\n" : " breaths: no RTC interrupt seen yet\n"); colour = FG;
+	show_dinacarya();
 }
 
 /* the body survey and power-off (read-only PCI and ACPI) */
@@ -944,6 +962,7 @@ static void execute(char *l)
 	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "stick")) { do_stick(); return; }
 	if (streq(w[0], "check")) { do_check(); return; }
+	if (streq(w[0], "sweep")) { dinacarya_round(true, false); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
 			if (streq(w[1], "jagrat") || streq(w[1], "wake")) avastha = Turiya::Avastha::JAGRAT;
@@ -959,7 +978,7 @@ static void execute(char *l)
 		colour = FG; return;
 	}
 	if (streq(w[0], "poweroff")) { do_poweroff(); return; }
-	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop")) {
+	if (streq(w[0], "crash") || streq(w[0], "heal") || streq(w[0], "stop") || streq(w[0], "taint")) {
 		organ *t = !w[1] ? nullptr : streq(w[1], "tvak") ? &tvak : streq(w[1], "kosa") ? &kosa : streq(w[1], "nadi") ? &nadi : streq(w[1], "nadi2") ? &nadi2 : streq(w[1], "smrti") ? &smrti
 		         : (streq(w[1], "hrdaya") || streq(w[1], "heart")) ? &hrdaya : nullptr;
 		if (t && w[0][0] == 's') {
@@ -967,6 +986,7 @@ static void execute(char *l)
 			colour = DIM; out("  asking "); out(t->name); out(" to go silent without falling; the breath should notice\n"); colour = FG;
 			hold_prompt = true; hold_since = beats; seL4_Signal(t->stop); return;
 		}
+		if (t && w[0][0] == 't') { taint_organ(*t); return; }
 		if (t) { if (w[0][0] == 'c') crash_organ(*t); else heal_organ(*t); return; }
 		colour = DIM; out("  only the organs (tvak, kosa, hrdaya, nadi, nadi2, smrti). Sakshi is the witness: if it fell, nothing would be left to heal it.\n");
 		colour = FG; return;
@@ -1127,6 +1147,7 @@ static void organ_spoke(organ &o, seL4_MessageInfo_t info)
 	}
 }
 
+#include "dinacarya.h"
 #include "kosa_host.h"
 #include "nadi_host.h"
 #include "smrti_host.h"
@@ -1188,6 +1209,7 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	clear_screen();
 
 	klen = Turiya::unhex(TEST_KEY, key, sizeof key);
+	self_check_at_start();                    /* is what was loaded what was built? */
 	cpu_name(cpu);
 	setup_io();
 
@@ -1217,6 +1239,8 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	colour = SAFFRON; out("TURIYA"); colour = DIM; out("  written from zero on seL4\n\n");
 	colour = FG; out("Sakshi is awake. I hold the screen, the gate and my own breath; the heart and the keyboard are organs.\n\n");
 	about();
+	colour = DIM; out("  own code    "); colour = self_state == SELF_SEALED ? FG : RED;
+	out_dec(dina.self_bytes); out(" bytes, "); out(self_words()); colour = DIM; out("; every organ is re-read each minute\n"); colour = FG;
 	out("\n");
 	colour = SAFFRON; out("Kartr gate, 15 test actions (rule code identical to the host tests)\n"); colour = FG;
 	run_gate();
@@ -1241,5 +1265,6 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 			if (badge & N_HEART) heart_tick();
 		}
 		drain_stash();
+		dinacarya_due();
 	}
 }

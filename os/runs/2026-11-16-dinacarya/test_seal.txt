@@ -1,0 +1,10 @@
+pass  the stamp is the SHA-256 of the read-only segments
+pass  sealing twice gives the same file
+pass  there are read-only and writable segments
+pass  a one-bit change in code or constants changes the seal (1582 places tried)
+pass  changing writable data leaves the seal alone
+pass  a file without the mark is refused
+pass  a file with two marks is refused
+pass  a mark inside a read-only segment is refused
+pass  the program headers lie inside the first read-only segment, so they are sealed too
+9/9 passed

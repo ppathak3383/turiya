@@ -36,4 +36,5 @@ rustc +stable --edition 2021 --crate-type staticlib --target x86_64-unknown-none
 
 cd ../sakshi
 g++ $FL $INC -I../organs $LD -o sakshi sakshi.cc ../gate-rs/libgate_proved.a
+python3 seal.py sakshi          # the build seal: Sakshi checks at start that what was loaded is what was built
 ls -l sakshi | awk '{print "sakshi", $5, "bytes"}'
