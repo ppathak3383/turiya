@@ -1,5 +1,5 @@
---- src/arch/x86/64/kernel/elf.c	2026-11-15 13:09:28.167706044 +0000
-+++ src/arch/x86/64/kernel/elf.c	2026-11-15 13:09:28.178925423 +0000
+--- a/src/arch/x86/64/kernel/elf.c
++++ b/src/arch/x86/64/kernel/elf.c
 @@ -31,7 +31,8 @@
      elf_reg.end = 0;
  

@@ -1,0 +1,8 @@
+# Turiya: the owner's own list of known targets.
+# Usas reads this file at start and hands it to Sakshi; Turiya never writes it.
+# One "known: <name>" per line; a line starting with # is a comment. At most 16 names.
+# A named target that is not here (nor the sender of the mail being answered) needs your approval.
+known: inbox
+known: sender
+known: papa
+known: ramesh.kumar@ybl

@@ -27,6 +27,7 @@ static void heart_tick(void)
 			hold_prompt = false; interject_end();
 		}
 		if (beats >= dina.last_beat + 90) dina.due = true;     /* ...and by the heart, if the breath ever fails */
+		clock_tick();                                           /* Kala: the date and time for the status bar */
 		status_bar();
 	}
 	if (irq_pit) seL4_IRQHandler_Ack(irq_pit);               /* only when Sakshi keeps the timer itself */

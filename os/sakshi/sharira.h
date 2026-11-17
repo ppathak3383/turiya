@@ -163,7 +163,7 @@ static const uint8_t *acpi_table(uint64_t pa)
 }
 
 struct acpi_state { bool done, xsdt; char sigs[64][5]; unsigned ntables; uint64_t fadt, dsdt;
-                    unsigned pm1a, pm1b; int s5a, s5b; const char *why; };
+                    unsigned pm1a, pm1b, century; int s5a, s5b; const char *why; };
 static acpi_state acpi;
 
 /* \_S5 is a data object in the DSDT: Name(_S5, Package(){a, b, ...}). Read its first two numbers. */
@@ -217,6 +217,7 @@ static void acpi_survey(void)
 	const uint8_t *f = acpi_table(acpi.fadt);
 	if (!f) { acpi.why = "no FADT"; return; }
 	uint32_t flen = rd32(f + 4);
+	acpi.century = flen > 108 ? f[108] : 0;       /* the CMOS index of the century register, 0 for none (Kala) */
 	acpi.pm1a = rd32(f + 64); acpi.pm1b = rd32(f + 68);
 	if (!acpi.pm1a && flen >= 184 && f[172] == 1) acpi.pm1a = (unsigned)rd64(f + 176);
 	if (!acpi.pm1b && flen >= 196 && f[184] == 1) acpi.pm1b = (unsigned)rd64(f + 188);

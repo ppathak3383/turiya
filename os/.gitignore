@@ -1,0 +1,2 @@
+# the kernel build directory (tools/bootstrap.sh, or by hand)
+kbuild/

@@ -1,0 +1,6 @@
+# build products of build.sh and build_usas.sh
+pad
+sel4.elf
+sakshi
+*.EFI
+*.img

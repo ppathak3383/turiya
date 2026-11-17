@@ -2,6 +2,7 @@
 # Turiya stick image: GPT + EFI system partition holding one GRUB EFI file with seL4 and Sakshi inside.
 set -e
 cd "$(dirname "$0")"
+[ -f pad ] || truncate -s 16M pad     # 16 MiB of zeros, a module GRUB loads after Sakshi (the GRUB path only)
 cp ../kbuild/kernel.elf sel4.elf
 cp ../sakshi/sakshi sakshi
 grub-mkstandalone -O x86_64-efi -o BOOTX64.EFI --modules="part_gpt fat multiboot2 efi_gop efi_uga all_video normal configfile" \

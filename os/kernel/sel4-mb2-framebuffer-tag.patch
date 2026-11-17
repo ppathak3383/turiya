@@ -1,5 +1,5 @@
---- /root/turiya0/patches/multiboot.S.orig	2026-11-15 06:55:23.265059144 +0000
-+++ /root/gb/genode/contrib/sel4-54809b28d155db2e1ab83120937bde016a56fcb9/src/kernel/sel4/src/arch/x86/multiboot.S	2026-11-15 06:55:23.281375670 +0000
+--- a/src/arch/x86/multiboot.S
++++ b/src/arch/x86/multiboot.S
 @@ -66,6 +66,16 @@
      .long   0x0
      .long   (__mbi2_end - __mbi2_start)

@@ -12,6 +12,9 @@ static void do_check(void)
 	out("; "); out(organ_state());
 	out("; judges agreed "); out_dec(judges_agree); out("/"); out_dec(judges_agree + judges_differ);
 	out("; daily rounds "); out_dec(dina.rounds); out(", changes "); out_dec(dina.found); out("; own code "); out(self_words()); out("\n");
+	colour = DIM; out("  owner      "); colour = FG; out_dec(owner.count()); out(" known targets ("); out(owner_source()); out(")");
+	kala_check();
+	out("\n");
 	colour = DIM; out("  processor  "); colour = FG; { char *c = cpu; while (*c == ' ') c++; out(c); }
 	out(", "); out_dec(ram_mib); out(" MiB"); if (fb) { out(", "); out_dec(fb_w); out("x"); out_dec(fb_h); } out("\n");
 

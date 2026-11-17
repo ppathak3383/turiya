@@ -1,10 +1,11 @@
-# Turiya OS: how it is put together (15 Nov 2026)
+# Turiya OS: how it is put together (17 Nov 2026)
 
 One proven kernel, one witness, and organs. Each organ has one duty (*svadharma*), fixed limits (*maryādā*) and a
 way back to health (*cikitsā*). Nothing above seL4 is inherited.
 
 ```
             firmware (UEFI) ── used once, at start ──> Uṣas (our loader, Rust) ──> seL4 13 (the only inherited code)
+                                                   reads \TURIYA\OWNER.TXT (read-only)
                                                                                      │
                                                          Sākṣī, the witness (root task): screen, gate, approvals,
                                                          breath (RTC); makes the organs, watches them, heals them
@@ -21,7 +22,7 @@ way back to health (*cikitsā*). Nothing above seL4 is inherited.
 
 | Part | Duty | Capabilities (its whole CSpace) | Memory | Made |
 |---|---|---|---|---|
-| Sākṣī | witness: screen, gate, approvals; makes and heals organs | everything seL4 gives the root task | its own image, the screen | at boot |
+| Sākṣī | witness: screen, gate, approvals, the clock (Kāla); makes and heals organs | everything seL4 gives the root task | its own image, the screen | at boot |
 | Tvak | key presses into characters | fault, channel out, its notification, IRQ 1, ports 0x60-0x64 | 7 pages (3 read-only), TLS, IPC buffer | at boot |
 | Hṛdaya | beat: one signal per tick into Sākṣī | fault, channel out, notification, IRQ 0, ports 0x40-0x43, one heart signal | its own pages | at boot |
 | Kośa | read blocks from the NVMe SSD | fault, channel out, notification | controller registers (16 KiB, uncached), 6 DMA pages, 1 window | `disk` |
@@ -55,6 +56,13 @@ outside the mandate, a target planted by outside content, while dreaming, while 
 | both on seL4 | every action goes to both; if they disagree, it is held |
 | the outside-content detector | fuzzed: 17.5 million inputs with AddressSanitizer and UBSan |
 
+The targets the owner knows come from the owner's own file, `\TURIYA\OWNER.TXT` on the stick (one `known: <name>` per
+line). Uṣas reads it before the firmware is left, opened read-only, and writes it into a marked area of Sākṣī's
+writable data, so the build seal still holds; `sakshi/owner_config.h` parses it and fails closed (a line it cannot
+read exactly is counted and skipped, never cleaned up). No file, a file over 4 KiB, or a start by GRUB: the list is
+empty, so every named target except the sender of the mail being answered needs the owner's approval. A held
+target can be approved from the keyboard (`approve`), for exactly that action.
+
 States (avasthā): **jāgrat**, the owner is here; **svapna**, dreaming, may think but not act (after 10 minutes
 without a key); **suṣupti**, deep sleep, nothing acts; **turīya**, the witness, present in all three.
 
@@ -66,6 +74,7 @@ without a key); **suṣupti**, deep sleep, nothing acts; **turīya**, the witnes
 - Organs poll instead of taking interrupts (keyboard excepted); fine for now, costs a little power.
 - No writes anywhere yet, by design: nothing is saved between starts.
 - The touchpad (I2C-HID) and the network are not there yet.
+- The clock is shown as the machine keeps it; the RTC carries no time zone, and Turiya never sets the clock.
 
 ## Read-only, proved (15 Nov 2026, night)
 

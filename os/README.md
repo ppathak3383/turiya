@@ -1,11 +1,11 @@
 # Turiya OS: written from zero on seL4
 
-Only one inherited piece: the seL4 microkernel (`kernel/`, two small boot-code patches). Everything else here is
-Turiya's own code.
+Only one inherited piece: the seL4 microkernel, release 13.0.0 (`kernel/`: three small patches to boot and interrupt
+code, and the configuration). Everything else here is Turiya's own code.
 
 | Part | Name | What it is |
 |---|---|---|
-| `usas/` | Uṣas (dawn) | UEFI start-up in Rust, no crates: takes the firmware's screen and memory map, loads seL4 and Sākṣī, leaves the firmware behind |
+| `usas/` | Uṣas (dawn) | UEFI start-up in Rust, no crates: takes the firmware's screen and memory map, reads the owner's file from the stick (read-only), loads seL4 and Sākṣī, leaves the firmware behind |
 | `sakshi/` | Sākṣī (witness) | the root task: screen, heart (50 Hz timer), the Kartr gate (`kartr_rule.h`, same code as the 36 host tests), makes and heals the organs |
 | `sakshi/sharira.h` | Śarīra (body) | read-only hardware survey (PCI, ACPI tables) and power-off |
 | `organs/tvak.cc` | Tvak (touch) | the keyboard, in its own compartment with 5 capabilities; re-made from its SHA-256-checked seed if it faults |
@@ -13,6 +13,8 @@ Turiya's own code.
 | `organs/nadi.cc` | Nāḍī (channel) | the USB 3 host controller: names what is plugged in, a USB keyboard types, a stick is read (`nadi_scsi.h`, proved read-only); made only when `usb` is typed |
 | `organs/smrti.cc` | Smṛti (memory) | reads FAT32 and exFAT on a stick (`smrti_fs.h`); touches no device, Sākṣī fetches its blocks |
 | `sakshi/vibhaga.h` | Vibhāga (division) | reads a partition table (GPT or MBR) from the SSD or a stick |
+| `sakshi/owner_config.h` | | the owner's own list of known targets, from `\TURIYA\OWNER.TXT` on the stick (`known: <name>` per line); no file means no target is known (default-deny). Command `owner` |
+| `sakshi/kala.h` | Kāla (time) | the date and time from the CMOS clock, read as data: two equal readings, each after the clock said it was not updating; anything doubtful is "unknown". On the status bar; command `time` |
 | `sakshi/dinacarya.h` | Dinacaryā (daily routine) | every minute re-reads each organ's read-only pages and Sākṣī's own code; an organ whose code changed is re-made from its seed. `sakshi/seal.py` stamps Sākṣī's build seal, checked at start |
 | `organs/hrdaya.cc` | Hṛdaya (heart) | the 50 Hz timer, its own organ; Sākṣī's breath (RTC, 2 Hz) restarts it if it falls silent |
 | `organs/kbd_i8042.h` | | keyboard tissue shared by Tvak and Sākṣī's reflex |
@@ -26,6 +28,8 @@ How it fits together: `ARCHITECTURE.md`.
 |---|---|---|
 | The gate's Rust decision meets its written specification | Verus proof; on seL4 it runs as a second judge beside the C++ rule, and the two agreed on all 1296 flag combinations | `gate-rs/`, `sakshi/proofs/` |
 | The gate's C++ rule: 7 properties | CBMC, plus 17.5 M fuzzed inputs for the detector | `sakshi/proofs/` |
+| The owner's file is read as written or not at all: no name shortened, cleaned or guessed; every line counted | host tests 42/42; CBMC on a small instance (Q1-Q6, 1,116 checks); 6.9 M fuzzed inputs; 4 mutants caught | `sakshi/owner_config.h`, `runs/2026-11-16-owner-config/` |
+| The clock gives a time only when it is sure: every byte of every register format checked against an independent calendar | host tests 35/35 (33.5 M date triples, 3.5 M round trips); CBMC K1-K6 (1,313 checks); 70.5 M fuzzed inputs; 9 mutants caught | `sakshi/kala.h`, `runs/2026-11-17-kala/` |
 | Kośa can only read the SSD, only into its page, exactly the blocks asked | CBMC on the code that runs (theorems A, B); 7 mutants caught | `organs/proofs/` |
 | Nāḍī can only read a stick: reading commands only, data only in | CBMC on the code that runs (theorems C, D); 6 mutants caught | `organs/proofs/` |
 | Smṛti, Vibhāga and Nāḍī's descriptor walk survive any bytes a stick or device can hold | libFuzzer with ASan and UBSan: 38.4 M, 7.5 M and 167.5 M inputs, 0 crashes | `organs/proofs/`, `sakshi/proofs/` |
@@ -34,6 +38,9 @@ How it fits together: `ARCHITECTURE.md`.
 Not covered: the compiler, the devices' own firmware, and DMA by a confused controller (no IOMMU support on
 AMD in seL4 yet).
 
-Build: `organs/build.sh` (the organs, their seeds, then Sākṣī), then `stick/build_usas.sh` (Uṣas and the image).
+Build from nothing on Debian or Ubuntu: `tools/bootstrap.sh <work dir>` fetches seL4 13.0.0, patches and configures it,
+builds everything into a stick image and runs the checks. By hand: `organs/build.sh` (the organs, their seeds, then
+Sākṣī), then `stick/build_usas.sh` (Uṣas and the image). `tools/emulator_suite.sh <image>` boots an image in QEMU,
+types the commands and checks what Sākṣī says (about 90 checks, 10 minutes).
 
-Runs: `runs/`: first light and Uṣas on the HP; each organ in the emulator; the night of 15 Nov (proofs, fuzzing, healing first); the daily round (16 Nov).
+Runs: `runs/`: first light and Uṣas on the HP; each organ in the emulator; the night of 15 Nov (proofs, fuzzing, healing first); the daily round (16 Nov); the owner's file and the clock (17 Nov).

@@ -20,6 +20,8 @@
 #include <sel4/sel4_arch/mapping.h>
 #include "font8x16.h"
 #include "kartr_rule.h"
+#include "owner_config.h"
+#include "kala.h"
 #include "kbd_i8042.h"
 #include "tvak_seed.h"
 #include "kosa_seed.h"
@@ -47,6 +49,8 @@ extern "C" void *memcpy(void *d, const void *s, unsigned long n)
 { unsigned char *p = (unsigned char *)d; const unsigned char *q = (const unsigned char *)s; while (n--) *p++ = *q++; return d; }
 
 extern "C" void sakshi_main(seL4_BootInfo *bi);
+extern "C" void (*__init_array_start[])(void);   /* from the linker: the C++ constructors to run at start */
+extern "C" void (*__init_array_end[])(void);
 
 extern "C" __attribute__((naked, noreturn)) void _start(void)
 {
@@ -172,6 +176,7 @@ static const char *avastha_name(Turiya::Avastha a)
 	return a == Turiya::Avastha::SVAPNA ? "svapna, dreaming" : a == Turiya::Avastha::SUSUPTI ? "susupti, deep sleep" : "jagrat, waking";
 }
 static const char *organ_state(void);
+static char clock_bar[32];              /* the date and time as Kala last read them (kala_host.h), or empty */
 static void status_bar(void)
 {
 	if (!fb) return;
@@ -185,6 +190,7 @@ static void status_bar(void)
 	add(avastha == Turiya::Avastha::JAGRAT ? "waking   " : avastha == Turiya::Avastha::SVAPNA ? "DREAMING   " : "ASLEEP   ");
 	add(organ_state());
 	add("   keys "); addn(keys); add("   type 'help'");
+	if (clock_bar[0]) { add("   "); add(clock_bar); }
 	line[k] = 0;
 	for (unsigned i = 0; i < k && MARGIN + (i + 1) * CW <= fb_w; i++)
 		glyph_at(MARGIN + i * CW, y, line[i], i < 5 ? RED : DIM, BAR);
@@ -297,9 +303,74 @@ static const char *OUTSIDE =
 static Turiya::u8 key[64];
 static Turiya::usize klen;
 
-/* step 5d: the targets the owner knows. A stand-in for the owner's own config page (to be read from the seed
- * the owner writes, step 5e); an empty list would hold every named target (default-deny). */
-static Turiya::Cstr const OWNER_KNOWN[] = { "inbox", "sender", "papa", "ramesh.kumar@ybl", nullptr };
+/*
+ * Step 5e: the targets the owner knows, from the owner's own file. Usas reads \TURIYA\OWNER.TXT from the stick
+ * (read-only) and writes it into this area of Sakshi's image before seL4 starts (usas/src/owner.rs); Sakshi only
+ * parses it (owner_config.h). The area: the 16-byte mark, a state byte, 3 zero bytes, the length (4 bytes,
+ * little-endian), then the file. Untouched (as when GRUB starts Turiya), no file, too large or unreadable: the
+ * list is empty, so every named target other than the sender needs the owner (default-deny), never "no list".
+ */
+enum : unsigned { OWNER_AREA = 24 + 4096 };
+__attribute__((used)) static volatile unsigned char OWNER_FILE[OWNER_AREA] =
+	{ 'T', 'U', 'R', 'I', 'Y', 'A', '-', 'O', 'W', 'N', 'E', 'R', '-', 'v', '1', 0 };
+enum : unsigned char { OWNER_UNTOUCHED, OWNER_READ, OWNER_NONE, OWNER_TOO_LARGE, OWNER_UNREADABLE, OWNER_STRANGE };
+static Turiya::Owner_config owner;
+static unsigned char owner_state;
+static Turiya::usize owner_bytes;
+
+static void owner_load(void)
+{
+	static Turiya::u8 text[OWNER_AREA - 24];
+	unsigned char st = OWNER_FILE[16];
+	Turiya::usize n = (Turiya::usize)OWNER_FILE[20] | (Turiya::usize)OWNER_FILE[21] << 8
+	                | (Turiya::usize)OWNER_FILE[22] << 16 | (Turiya::usize)OWNER_FILE[23] << 24;
+	if (st > OWNER_UNREADABLE || (st == OWNER_READ && n > sizeof text) || (st != OWNER_READ && n)) st = OWNER_STRANGE;
+	if (st != OWNER_READ) n = 0;
+	for (Turiya::usize i = 0; i < n; i++) text[i] = OWNER_FILE[24 + i];
+	owner_state = st; owner_bytes = n;
+	owner.parse(text, n);                         /* nothing read: an empty list, never a null one */
+}
+
+static const char *owner_source(void)
+{
+	switch (owner_state) {
+	case OWNER_READ:       return "the owner's file \\TURIYA\\OWNER.TXT on the stick";
+	case OWNER_NONE:       return "no \\TURIYA\\OWNER.TXT on the stick";
+	case OWNER_TOO_LARGE:  return "\\TURIYA\\OWNER.TXT is over 4096 bytes, not used";
+	case OWNER_UNREADABLE: return "\\TURIYA\\OWNER.TXT could not be read, not used";
+	case OWNER_UNTOUCHED:  return "not started by Usas, so no owner's file was read";
+	default:               return "the owner's area was not understood, not used";
+	}
+}
+
+static void owner_line(void)
+{
+	colour = DIM; out("  owner       "); colour = FG;
+	if (owner.count()) { out_dec(owner.count()); out(owner.count() == 1 ? " known target" : " known targets"); }
+	else out("no known target: every named target other than the sender needs you");
+	colour = DIM; out(" ("); out(owner_source()); out(")");
+	if (owner.counts().skipped) { colour = RED; out("; "); out_dec(owner.counts().skipped); out(" lines not understood, see 'owner'"); }
+	out("\n"); colour = FG;
+}
+
+static void show_owner(void)
+{
+	Turiya::Owner_config_counts c = owner.counts();
+	colour = SAFFRON; out("  the owner's list "); colour = DIM; out("("); out(owner_source());
+	if (owner_state == OWNER_READ) { out(", "); out_dec(owner_bytes); out(" bytes"); }
+	out("; Turiya never writes it)\n");
+	colour = DIM; out("  known      "); colour = FG;
+	if (!owner.count()) out("none: every named target other than the sender needs you");
+	for (Turiya::usize i = 0; i < owner.count(); i++) { if (i) out("  "); out(owner.name(i)); }
+	out("\n");
+	if (owner_state == OWNER_READ) {
+		colour = DIM; out("  lines      "); colour = FG; out_dec(c.lines); out(": "); out_dec(c.comments); out(" comments, ");
+		out_dec(c.accepted); out(" taken, "); out_dec(c.duplicates); out(" already listed, "); out_dec(c.over_limit);
+		out(" past the limit of 16, "); if (c.skipped) colour = RED; out_dec(c.skipped); out(" not understood\n");
+	}
+	colour = DIM; out("  To change it, edit \\TURIYA\\OWNER.TXT on the stick (one 'known: <name>' per line) and restart.\n");
+	colour = FG;
+}
 
 /* ---- two judges: the C++ rule (CBMC-checked) and the Verus-proved decision (Rust) must agree ---- */
 extern "C" uint32_t turiya_proved_decide(uint32_t flags, uint32_t state, const uint8_t *given, const uint8_t *expect);
@@ -309,7 +380,7 @@ static Turiya::Verdict judge(const char *type, const char *target, const char *a
                              bool trunc, const char *outside, Turiya::Avastha state)
 {
 	using namespace Turiya;
-	Verdict c = decide(key, klen, type, target, amount, appr, trunc, DEFAULT_MANDATE, outside, state, OWNER_KNOWN);
+	Verdict c = decide(key, klen, type, target, amount, appr, trunc, DEFAULT_MANDATE, outside, state, owner.known());
 	u8 given[32] = { 0 }, expect[32] = { 0 };
 	bool hex_ok = unhex(appr, given, 32) == 32;
 	usize lt = Turiya::slen(type), lg = Turiya::slen(target), la = Turiya::slen(amount);
@@ -327,7 +398,7 @@ static Turiya::Verdict judge(const char *type, const char *target, const char *a
 	           | (uint32_t)irreversible(type) << 3 | (uint32_t)in_mandate(DEFAULT_MANDATE, type) << 4
 	           | (uint32_t)in_mandate(THINKING, type) << 5 | (uint32_t)target_from_outside(target, outside) << 6
 	           | (uint32_t)(klen != 0) << 7 | (uint32_t)hex_ok << 8
-	           | (uint32_t)target_not_known(OWNER_KNOWN, target, outside) << 9;
+	           | (uint32_t)target_not_known(owner.known(), target, outside) << 9;
 	Verdict r = (Verdict)turiya_proved_decide(f, (uint32_t)state, given, expect);
 	if (r == c) { judges_agree++; return c; }
 	judges_differ++;
@@ -490,6 +561,7 @@ static void help(void)
 	out("  help                     this list\n");
 	out("  check                    one screen on this machine and Turiya (reads only; for one photo)\n");
 	out("  about                    what is running, on what\n");
+	out("  time                     the date and time, as the machine's clock keeps it (Kala)\n");
 	out("  organs                   the parts of Turiya: duty, what each holds, health\n");
 	out("  body                     the hardware Turiya found (read-only survey)\n");
 	out("  disk                     read the SSD's partition table (Kosa; it can only read)\n");
@@ -499,6 +571,7 @@ static void help(void)
 	out("  read <file>              the start of a file on the stick, as text\n");
 	out("  gate                     run the 15 test actions again\n");
 	out("  mail                     the sample email the gate guards against\n");
+	out("  owner                    the targets you know: your file \\TURIYA\\OWNER.TXT on the stick\n");
 	out("  <action> <target> [amt]  ask the gate, e.g.  pay ramesh.kumar@ybl 15000\n");
 	out("                           summarise inbox    draft_reply papa    delete photos\n");
 	out("  approve                  approve the last held action (only from this keyboard)\n");
@@ -903,6 +976,7 @@ static void show_organs(void)
 static uint8_t rsdp_copy[36];
 static bool have_rsdp;
 #include "sharira.h"
+#include "kala_host.h"
 
 static void do_reboot(void)
 {
@@ -962,6 +1036,8 @@ static void execute(char *l)
 	if (streq(w[0], "usb")) { do_usb(); return; }
 	if (streq(w[0], "stick")) { do_stick(); return; }
 	if (streq(w[0], "check")) { do_check(); return; }
+	if (streq(w[0], "owner")) { show_owner(); return; }
+	if (streq(w[0], "time")) { show_time(); return; }
 	if (streq(w[0], "sweep")) { dinacarya_round(true, false); return; }
 	if (streq(w[0], "state")) {
 		if (w[1]) {
@@ -1031,7 +1107,7 @@ static void execute(char *l)
 	if (v == Turiya::Verdict::HELD_DREAMING) dream_plans++;
 	record(type, target, amount, v);
 	show_verdict(0, type, target, amount, v); explain(v, type);
-	if (v == Turiya::Verdict::HELD_NEEDS_APPROVAL && slen(type) < sizeof last_type && slen(target) < sizeof last_target
+	if ((v == Turiya::Verdict::HELD_NEEDS_APPROVAL || v == Turiya::Verdict::HELD_UNKNOWN_TARGET) && slen(type) < sizeof last_type && slen(target) < sizeof last_target
 	    && slen(amount) < sizeof last_amount) {
 		memcpy(last_type, type, slen(type) + 1); memcpy(last_target, target, slen(target) + 1);
 		memcpy(last_amount, amount, slen(amount) + 1); have_last = true;
@@ -1171,6 +1247,8 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	*(uptr *)tp = tp;
 	seL4_TCB_SetTLSBase(seL4_CapInitThreadTCB, tp);
 	seL4_SetIPCBuffer(bi->ipcBuffer);
+	/* C++ constructors of objects that live for the whole run (the owner's list), as a C runtime would */
+	for (void (**f)(void) = __init_array_start; f != __init_array_end; f++) (*f)();
 
 	next_slot = bi->empty.start; last_slot = bi->empty.end;
 	sput("\nTuriya: Sakshi starting (serial)\n");
@@ -1209,6 +1287,7 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	clear_screen();
 
 	klen = Turiya::unhex(TEST_KEY, key, sizeof key);
+	owner_load();                             /* the owner's file, as Usas handed it over */
 	self_check_at_start();                    /* is what was loaded what was built? */
 	cpu_name(cpu);
 	setup_io();
@@ -1241,6 +1320,7 @@ extern "C" void sakshi_main(seL4_BootInfo *bi)
 	about();
 	colour = DIM; out("  own code    "); colour = self_state == SELF_SEALED ? FG : RED;
 	out_dec(dina.self_bytes); out(" bytes, "); out(self_words()); colour = DIM; out("; every organ is re-read each minute\n"); colour = FG;
+	owner_line();
 	out("\n");
 	colour = SAFFRON; out("Kartr gate, 15 test actions (rule code identical to the host tests)\n"); colour = FG;
 	run_gate();

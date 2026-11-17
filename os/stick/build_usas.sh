@@ -2,6 +2,8 @@
 # Turiya stick: Usas (our own start-up) as the default UEFI program, GRUB kept as a fallback.
 set -e
 cd "$(dirname "$0")"
+[ -f pad ] || truncate -s 16M pad     # 16 MiB of zeros, a module GRUB loads after Sakshi (the GRUB path only)
+mkdir -p ../usas/payload
 cp ../kbuild/kernel.elf ../usas/payload/sel4.elf
 cp ../sakshi/sakshi ../usas/payload/sakshi
 (cd ../usas && cargo build --release --target x86_64-unknown-uefi 2>&1 | grep -E "^error" && exit 1 || true)
@@ -14,7 +16,8 @@ rm -f $IMG; truncate -s 64M $IMG
 sgdisk -o -n 1:2048:0 -t 1:ef00 -c 1:TURIYA $IMG >/dev/null
 OFF=$((2048*512))
 mformat -i $IMG@@$OFF -F -v TURIYA ::
-mmd -i $IMG@@$OFF ::/EFI ::/EFI/BOOT ::/EFI/TURIYA ::/EFI/GRUB
+mmd -i $IMG@@$OFF ::/EFI ::/EFI/BOOT ::/EFI/TURIYA ::/EFI/GRUB ::/TURIYA
+mcopy -i $IMG@@$OFF OWNER.TXT ::/TURIYA/OWNER.TXT     # the owner's list of known targets (a sample; Turiya only reads it)
 mcopy -i $IMG@@$OFF USAS.EFI ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i $IMG@@$OFF USAS.EFI ::/EFI/TURIYA/USAS.EFI
 mcopy -i $IMG@@$OFF GRUBX64.EFI ::/EFI/GRUB/GRUBX64.EFI

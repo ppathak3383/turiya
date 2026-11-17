@@ -6,13 +6,16 @@
 //!   2. finds the ACPI tables (RSDP) the firmware publishes,
 //!   3. lays out seL4 at its physical address and Sakshi as a boot module above it,
 //!   4. converts the firmware's memory map into multiboot2 form (merged, at most 15 free regions),
-//!   5. leaves the firmware (ExitBootServices) and never calls it again,
-//!   6. switches the processor from 64-bit long mode to 32-bit protected mode without paging,
+//!   5. reads the owner's file, \TURIYA\OWNER.TXT on this stick (opened read-only), into Sakshi's image,
+//!   6. leaves the firmware (ExitBootServices) and never calls it again,
+//!   7. switches the processor from 64-bit long mode to 32-bit protected mode without paging,
 //!      copies the images into place, and enters seL4 the way a multiboot2 loader does.
 //! No libraries, no crates: only the UEFI specification and the multiboot2 specification.
 
 #![no_std]
 #![no_main]
+
+mod owner;
 
 use core::arch::global_asm;
 use core::fmt::Write;
@@ -87,7 +90,7 @@ struct BootServices {
     install_protocol_interface: usize,
     reinstall_protocol_interface: usize,
     uninstall_protocol_interface: usize,
-    handle_protocol: usize,
+    handle_protocol: extern "efiapi" fn(Handle, *const Guid, *mut *mut u8) -> Status,
     reserved: usize,
     register_protocol_notify: usize,
     locate_handle: usize,
@@ -124,6 +127,39 @@ struct GopMode { max_mode: u32, mode: u32, info: *const GopModeInfo, size_of_inf
 
 #[repr(C)]
 struct GopModeInfo { version: u32, width: u32, height: u32, pixel_format: u32, masks: [u32; 4], pixels_per_line: u32 }
+
+// the stick Usas was started from: its loaded image names the device, the device has a file system
+const LOADED_IMAGE_GUID: Guid = Guid(0x5b1b31a1, 0x9562, 0x11d2, [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
+const SIMPLE_FS_GUID: Guid = Guid(0x964e5b22, 0x6459, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
+const FILE_MODE_READ: u64 = 1;
+const EFI_NOT_FOUND: Status = 14 | (1usize << 63);
+
+#[repr(C)]
+#[allow(dead_code)]
+struct LoadedImage { revision: u32, parent: Handle, system_table: *mut SystemTable, device: Handle } // the rest unused
+
+#[repr(C)]
+#[allow(dead_code)]
+struct SimpleFs { revision: u64, open_volume: extern "efiapi" fn(*mut SimpleFs, *mut *mut File) -> Status }
+
+#[repr(C)]
+#[allow(dead_code)]
+struct File {
+    revision: u64,
+    open: extern "efiapi" fn(*mut File, *mut *mut File, *const u16, u64, u64) -> Status,
+    close: extern "efiapi" fn(*mut File) -> Status,
+    delete: usize, // never called: Usas only reads
+    read: extern "efiapi" fn(*mut File, *mut usize, *mut u8) -> Status,
+    write: usize,  // never called
+}
+
+const OWNER_PATH: [u16; 18] = {
+    let s = b"\\TURIYA\\OWNER.TXT\0";
+    let mut a = [0u16; 18];
+    let mut i = 0;
+    while i < 18 { a[i] = s[i] as u16; i += 1; }
+    a
+};
 
 // memory types and allocation kinds
 const ALLOCATE_MAX_ADDRESS: u32 = 1;
@@ -305,6 +341,37 @@ fn convert_map(map: *const u8, map_size: usize, desc_size: usize, out: &mut [Reg
     m
 }
 
+// ---------------------------------------------------------------- the owner's file (step 5e)
+// \TURIYA\OWNER.TXT on the device Usas itself was loaded from (the stick), opened read-only. Returns the state
+// (owner::READ, NONE, TOO_LARGE, UNREADABLE) and the number of bytes in buf. Nothing else is opened or written.
+fn read_owner(bs: &BootServices, image: Handle, buf: &mut [u8; owner::MAX + 1]) -> (u8, usize) {
+    let mut li: *mut u8 = core::ptr::null_mut();
+    if (bs.handle_protocol)(image, &LOADED_IMAGE_GUID, &mut li) != EFI_SUCCESS || li.is_null() { return (owner::UNREADABLE, 0); }
+    let dev = unsafe { (*(li as *const LoadedImage)).device };
+    let mut fs: *mut u8 = core::ptr::null_mut();
+    if (bs.handle_protocol)(dev, &SIMPLE_FS_GUID, &mut fs) != EFI_SUCCESS || fs.is_null() { return (owner::UNREADABLE, 0); }
+    let fs = fs as *mut SimpleFs;
+    let mut root: *mut File = core::ptr::null_mut();
+    if unsafe { ((*fs).open_volume)(fs, &mut root) } != EFI_SUCCESS || root.is_null() { return (owner::UNREADABLE, 0); }
+    let mut f: *mut File = core::ptr::null_mut();
+    let st = unsafe { ((*root).open)(root, &mut f, OWNER_PATH.as_ptr(), FILE_MODE_READ, 0) };
+    if st != EFI_SUCCESS || f.is_null() {
+        unsafe { ((*root).close)(root) };
+        return (if st == EFI_NOT_FOUND { owner::NONE } else { owner::UNREADABLE }, 0);
+    }
+    let (mut total, mut ok) = (0usize, true);
+    while total < buf.len() {
+        let mut n = buf.len() - total;
+        if unsafe { ((*f).read)(f, &mut n, buf.as_mut_ptr().add(total)) } != EFI_SUCCESS { ok = false; break; }
+        if n == 0 { break; }
+        total += n;
+    }
+    unsafe { ((*f).close)(f); ((*root).close)(root); }
+    if !ok { return (owner::UNREADABLE, 0); }
+    if total > owner::MAX { return (owner::TOO_LARGE, 0); }
+    (owner::READ, total)
+}
+
 // ---------------------------------------------------------------- the dawn
 #[no_mangle]
 pub extern "efiapi" fn efi_main(image: Handle, st: *mut SystemTable) -> Status {
@@ -437,6 +504,20 @@ fn dawn(image: Handle, st: *mut SystemTable) -> Result<(), Fail> {
     }
     if mod_dst == 0 { return Err(Fail("no free memory above the kernel for Sakshi")); }
     say!("  sakshi    {} bytes, placed at {:#x}\n", ROOT.len(), mod_dst);
+
+    // ---- 5b. the owner's file, into the staged copy of Sakshi (its writable data only; the seal still holds)
+    let mut obuf = [0u8; owner::MAX + 1];
+    let (ostate, olen) = read_owner(bs, image, &mut obuf);
+    let img = unsafe { core::slice::from_raw_parts_mut(mstage as *mut u8, ROOT.len()) };
+    match owner::find_area(img) {
+        Some(at) if owner::place(img, at, ostate, &obuf[..olen]) => match ostate {
+            owner::READ => { say!("  owner     \\TURIYA\\OWNER.TXT, {} bytes, read for Sakshi\n", olen); }
+            owner::NONE => { say!("  owner     no \\TURIYA\\OWNER.TXT on this stick: Sakshi will know no target\n"); }
+            owner::TOO_LARGE => { say!("  owner     \\TURIYA\\OWNER.TXT is over {} bytes: not used\n", owner::MAX); }
+            _ => { say!("  owner     \\TURIYA\\OWNER.TXT could not be read: not used\n"); }
+        },
+        _ => { say!("  owner     Sakshi has no place for the owner's file: not used\n"); }
+    }
 
     // ---- 6. multiboot2 information, all but the memory map
     let mut mbi = Mbi { base: mbi_addr as *mut u8, len: 0, cap: mbi_pages * 4096 };
