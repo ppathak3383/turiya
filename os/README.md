@@ -41,6 +41,6 @@ AMD in seL4 yet).
 Build from nothing on Debian or Ubuntu: `tools/bootstrap.sh <work dir>` fetches seL4 13.0.0, patches and configures it,
 builds everything into a stick image and runs the checks. By hand: `organs/build.sh` (the organs, their seeds, then
 Sākṣī), then `stick/build_usas.sh` (Uṣas and the image). `tools/emulator_suite.sh <image>` boots an image in QEMU,
-types the commands and checks what Sākṣī says (about 90 checks, 10 minutes).
+types the commands and checks what Sākṣī says (91 checks, about 8 minutes).
 
 Runs: `runs/`: first light and Uṣas on the HP; each organ in the emulator; the night of 15 Nov (proofs, fuzzing, healing first); the daily round (16 Nov); the owner's file and the clock (17 Nov).
